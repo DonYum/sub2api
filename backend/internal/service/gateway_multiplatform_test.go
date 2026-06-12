@@ -23,8 +23,10 @@ func testConfig() *config.Config {
 type mockAccountRepoForPlatform struct {
 	accounts         []Account
 	accountsByID     map[int64]*Account
+	accountsByGroup  map[int64][]Account
 	listPlatformFunc func(ctx context.Context, platform string) ([]Account, error)
 	getByIDCalls     int
+	listByGroupCalls int
 }
 
 func (m *mockAccountRepoForPlatform) GetByID(ctx context.Context, id int64) (*Account, error) {
@@ -96,6 +98,10 @@ func (m *mockAccountRepoForPlatform) ListWithFilters(ctx context.Context, params
 	return nil, nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListByGroup(ctx context.Context, groupID int64) ([]Account, error) {
+	m.listByGroupCalls++
+	if m.accountsByGroup != nil {
+		return append([]Account(nil), m.accountsByGroup[groupID]...), nil
+	}
 	return nil, nil
 }
 func (m *mockAccountRepoForPlatform) ListActive(ctx context.Context) ([]Account, error) {

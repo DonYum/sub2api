@@ -43,10 +43,11 @@ import (
 )
 
 const (
-	claudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
-	claudeAPICountTokensURL = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
-	stickySessionTTL        = time.Hour // 粘性会话TTL
-	defaultMaxLineSize      = 500 * 1024 * 1024
+	claudeAPIURL                     = "https://api.anthropic.com/v1/messages?beta=true"
+	claudeAPICountTokensURL          = "https://api.anthropic.com/v1/messages/count_tokens?beta=true"
+	stickySessionTTL                 = time.Hour // 粘性会话TTL
+	stickyGroupPriorityRangeCacheTTL = 30 * time.Second
+	defaultMaxLineSize               = 500 * 1024 * 1024
 	// Canonical Claude Code banner. Keep it EXACT (no trailing whitespace/newlines)
 	// to match real Claude CLI traffic as closely as possible. When we need a visual
 	// separator between system blocks, we add "\n\n" at concatenation time.
@@ -625,6 +626,7 @@ type GatewayService struct {
 	rpmCache              RPMCache          // RPM 计数缓存（仅 Anthropic OAuth/SetupToken）
 	userGroupRateResolver *userGroupRateResolver
 	userGroupRateCache    *gocache.Cache
+	stickyPriorityCache   *gocache.Cache
 	userGroupRateSF       singleflight.Group
 	modelsListCache       *gocache.Cache
 	modelsListCacheTTL    time.Duration
@@ -696,6 +698,7 @@ func NewGatewayService(
 		sessionLimitCache:     sessionLimitCache,
 		rpmCache:              rpmCache,
 		userGroupRateCache:    gocache.New(userGroupRateTTL, time.Minute),
+		stickyPriorityCache:   gocache.New(stickyGroupPriorityRangeCacheTTL, time.Minute),
 		settingService:        settingService,
 		modelsListCache:       gocache.New(modelsListTTL, time.Minute),
 		modelsListCacheTTL:    modelsListTTL,
@@ -786,7 +789,10 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if sessionHash == "" || accountID <= 0 || s.cache == nil {
+	if s == nil || sessionHash == "" || accountID <= 0 || s.cache == nil {
+		return nil
+	}
+	if s.shouldSkipStickyBindForAccount(ctx, groupID, accountID, nil, nil) {
 		return nil
 	}
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
@@ -1903,9 +1909,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 							continue
 						}
-						if sessionHash != "" && s.cache != nil {
-							_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, item.account.ID, stickySessionTTL)
-						}
+						_ = s.bindStickySessionForSelectedAccount(ctx, groupID, sessionHash, item.account, nil)
 						if s.debugModelRoutingEnabled() {
 							logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), item.account.ID)
 						}
@@ -2149,9 +2153,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if !s.checkAndRegisterSession(ctx, selected.account, sessionHash) {
 					result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 				} else {
-					if sessionHash != "" && s.cache != nil {
-						_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.account.ID, stickySessionTTL)
-					}
+					_ = s.bindStickySessionForSelectedAccount(ctx, groupID, sessionHash, selected.account, nil)
 					return s.newSelectionResult(ctx, selected.account, true, result.ReleaseFunc, nil)
 				}
 			}
@@ -2197,9 +2199,7 @@ func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates
 				result.ReleaseFunc() // 释放槽位，继续尝试下一个账号
 				continue
 			}
-			if sessionHash != "" && s.cache != nil {
-				_ = s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, acc.ID, stickySessionTTL)
-			}
+			_ = s.bindStickySessionForSelectedAccount(ctx, groupID, sessionHash, acc, nil)
 			selection, err := s.newSelectionResult(ctx, acc, true, result.ReleaseFunc, nil)
 			if err != nil {
 				return nil, false, err
@@ -2829,6 +2829,194 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 	return s.accountRepo.GetByID(ctx, accountID)
 }
 
+func (s *GatewayService) bindStickySessionForSelectedAccount(ctx context.Context, groupID *int64, sessionHash string, account *Account, groupAccounts []Account) error {
+	if sessionHash == "" || account == nil || account.ID <= 0 || s.cache == nil {
+		return nil
+	}
+	if s.shouldSkipStickyBindForAccount(ctx, groupID, account.ID, account, groupAccounts) {
+		return nil
+	}
+	if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, account.ID, stickySessionTTL); err != nil {
+		logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, account.ID, err)
+		return err
+	}
+	return nil
+}
+
+func (s *GatewayService) shouldSkipStickyBindForAccount(ctx context.Context, groupID *int64, accountID int64, account *Account, groupAccounts []Account) bool {
+	if s == nil || groupID == nil || accountID <= 0 {
+		return false
+	}
+	accountPriority, ok := s.stickyAccountGroupPriority(ctx, *groupID, accountID, account)
+	if !ok {
+		return false
+	}
+	minPriority, maxPriority, ok := s.accountGroupPriorityRange(ctx, *groupID, groupAccounts)
+	if !ok || minPriority == maxPriority {
+		return false
+	}
+	if accountPriority < maxPriority {
+		return false
+	}
+
+	slog.Info("sticky.bind_skipped_low_priority_fallback",
+		"group_id", *groupID,
+		"account_id", accountID,
+		"account_priority", accountPriority,
+		"top_priority", minPriority,
+		"max_priority", maxPriority,
+	)
+	return true
+}
+
+func (s *GatewayService) stickyAccountGroupPriority(ctx context.Context, groupID int64, accountID int64, account *Account) (int, bool) {
+	if account != nil && account.ID == accountID {
+		priority, ok := accountGroupPriority(account, groupID)
+		if ok {
+			s.setCachedAccountGroupPriority(groupID, accountID, priority)
+			return priority, true
+		}
+	}
+	if priority, ok := s.cachedAccountGroupPriority(groupID, accountID); ok {
+		return priority, true
+	}
+	if account == nil || account.ID != accountID {
+		if s.schedulerSnapshot == nil && s.accountRepo == nil {
+			return 0, false
+		}
+		var err error
+		account, err = s.getSchedulableAccount(ctx, accountID)
+		if err != nil || account == nil {
+			return 0, false
+		}
+	}
+	priority, ok := accountGroupPriority(account, groupID)
+	if !ok {
+		return 0, false
+	}
+	s.setCachedAccountGroupPriority(groupID, accountID, priority)
+	return priority, true
+}
+
+func (s *GatewayService) accountGroupPriorityRange(ctx context.Context, groupID int64, groupAccounts []Account) (int, int, bool) {
+	if minPriority, maxPriority, ok := s.cachedAccountGroupPriorityRange(groupID); ok {
+		return minPriority, maxPriority, true
+	}
+	if s != nil && s.accountRepo != nil {
+		accounts, err := s.accountRepo.ListByGroup(ctx, groupID)
+		if err == nil && len(accounts) > 0 {
+			if minPriority, maxPriority, ok := accountGroupPriorityRangeFromAccounts(accounts, groupID); ok {
+				s.setCachedAccountGroupPriorityRange(groupID, minPriority, maxPriority)
+				return minPriority, maxPriority, true
+			}
+		}
+	}
+	minPriority, maxPriority, ok := accountGroupPriorityRangeFromAccounts(groupAccounts, groupID)
+	if ok {
+		s.setCachedAccountGroupPriorityRange(groupID, minPriority, maxPriority)
+	}
+	return minPriority, maxPriority, ok
+}
+
+type accountGroupPriorityRangeValue struct {
+	min int
+	max int
+}
+
+func (s *GatewayService) cachedAccountGroupPriorityRange(groupID int64) (int, int, bool) {
+	if s == nil || s.stickyPriorityCache == nil || groupID <= 0 {
+		return 0, 0, false
+	}
+	raw, ok := s.stickyPriorityCache.Get(stickyGroupPriorityRangeCacheKey(groupID))
+	if !ok {
+		return 0, 0, false
+	}
+	priorityRange, ok := raw.(accountGroupPriorityRangeValue)
+	if !ok {
+		return 0, 0, false
+	}
+	return priorityRange.min, priorityRange.max, true
+}
+
+func (s *GatewayService) setCachedAccountGroupPriorityRange(groupID int64, minPriority int, maxPriority int) {
+	if s == nil || s.stickyPriorityCache == nil || groupID <= 0 {
+		return
+	}
+	s.stickyPriorityCache.Set(
+		stickyGroupPriorityRangeCacheKey(groupID),
+		accountGroupPriorityRangeValue{min: minPriority, max: maxPriority},
+		gocache.DefaultExpiration,
+	)
+}
+
+func stickyGroupPriorityRangeCacheKey(groupID int64) string {
+	return "range:" + strconv.FormatInt(groupID, 10)
+}
+
+func (s *GatewayService) cachedAccountGroupPriority(groupID int64, accountID int64) (int, bool) {
+	if s == nil || s.stickyPriorityCache == nil || groupID <= 0 || accountID <= 0 {
+		return 0, false
+	}
+	raw, ok := s.stickyPriorityCache.Get(stickyAccountGroupPriorityCacheKey(groupID, accountID))
+	if !ok {
+		return 0, false
+	}
+	priority, ok := raw.(int)
+	return priority, ok
+}
+
+func (s *GatewayService) setCachedAccountGroupPriority(groupID int64, accountID int64, priority int) {
+	if s == nil || s.stickyPriorityCache == nil || groupID <= 0 || accountID <= 0 {
+		return
+	}
+	s.stickyPriorityCache.Set(
+		stickyAccountGroupPriorityCacheKey(groupID, accountID),
+		priority,
+		gocache.DefaultExpiration,
+	)
+}
+
+func stickyAccountGroupPriorityCacheKey(groupID int64, accountID int64) string {
+	return "account:" + strconv.FormatInt(groupID, 10) + ":" + strconv.FormatInt(accountID, 10)
+}
+
+func accountGroupPriorityRangeFromAccounts(accounts []Account, groupID int64) (int, int, bool) {
+	found := false
+	minPriority := 0
+	maxPriority := 0
+	for i := range accounts {
+		priority, ok := accountGroupPriority(&accounts[i], groupID)
+		if !ok {
+			continue
+		}
+		if !found {
+			minPriority = priority
+			maxPriority = priority
+			found = true
+			continue
+		}
+		if priority < minPriority {
+			minPriority = priority
+		}
+		if priority > maxPriority {
+			maxPriority = priority
+		}
+	}
+	return minPriority, maxPriority, found
+}
+
+func accountGroupPriority(account *Account, groupID int64) (int, bool) {
+	if account == nil {
+		return 0, false
+	}
+	for _, ag := range account.AccountGroups {
+		if ag.GroupID == groupID {
+			return ag.Priority, true
+		}
+	}
+	return 0, false
+}
+
 func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
 	if account == nil || s.schedulerSnapshot == nil {
 		return account, nil
@@ -3254,11 +3442,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 		}
 
 		if selected != nil {
-			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
-				}
-			}
+			_ = s.bindStickySessionForSelectedAccount(ctx, groupID, sessionHash, selected, nil)
 			if s.debugModelRoutingEnabled() {
 				logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
 			}
@@ -3376,11 +3560,7 @@ func (s *GatewayService) selectAccountForModelWithPlatform(ctx context.Context, 
 	}
 
 	// 4. 建立粘性绑定
-	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
-		}
-	}
+	_ = s.bindStickySessionForSelectedAccount(ctx, groupID, sessionHash, selected, nil)
 
 	return selected, nil
 }
@@ -3514,11 +3694,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 		}
 
 		if selected != nil {
-			if sessionHash != "" && s.cache != nil {
-				if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-					logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
-				}
-			}
+			_ = s.bindStickySessionForSelectedAccount(ctx, groupID, sessionHash, selected, nil)
 			if s.debugModelRoutingEnabled() {
 				logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] legacy mixed routed select: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), selected.ID)
 			}
@@ -3637,11 +3813,7 @@ func (s *GatewayService) selectAccountWithMixedScheduling(ctx context.Context, g
 	}
 
 	// 4. 建立粘性绑定
-	if sessionHash != "" && s.cache != nil {
-		if err := s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, selected.ID, stickySessionTTL); err != nil {
-			logger.LegacyPrintf("service.gateway", "set session account failed: session=%s account_id=%d err=%v", sessionHash, selected.ID, err)
-		}
-	}
+	_ = s.bindStickySessionForSelectedAccount(ctx, groupID, sessionHash, selected, nil)
 
 	return selected, nil
 }
