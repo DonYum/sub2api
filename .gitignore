@@ -131,6 +131,7 @@ docs/*
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md
 !docs/ADMIN_PAYMENT_INTEGRATION_API.md
+!docs/kiro-cache-investigation.md
 !docs/legal/
 !docs/legal/*.md
 .serena/
