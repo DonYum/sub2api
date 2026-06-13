@@ -9214,19 +9214,23 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
-		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
-			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
-			// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
-			UsageTokens{
-				InputTokens:         result.Usage.InputTokens,
-				OutputTokens:        result.Usage.OutputTokens,
-				CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-				CacheReadTokens:     result.Usage.CacheReadInputTokens,
-				ImageOutputTokens:   result.Usage.ImageOutputTokens,
-			},
-			cost.TotalCost,
-		)
+		if kiroCost, ok := s.kiroCreditsCost(result); ok {
+			usageLog.AccountStatsCost = &kiroCost
+		} else {
+			applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
+				account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
+				// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
+				// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
+				UsageTokens{
+					InputTokens:         result.Usage.InputTokens,
+					OutputTokens:        result.Usage.OutputTokens,
+					CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+					CacheReadTokens:     result.Usage.CacheReadInputTokens,
+					ImageOutputTokens:   result.Usage.ImageOutputTokens,
+				},
+				cost.TotalCost,
+			)
+		}
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
@@ -9394,7 +9398,69 @@ func (s *GatewayService) calculateTokenCost(
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 		return &CostBreakdown{ActualCost: 0}
 	}
+	s.applyKiroCreditsCostOverride(cost, result, multiplier)
 	return cost
+}
+
+func (s *GatewayService) applyKiroCreditsCostOverride(cost *CostBreakdown, result *ForwardResult, multiplier float64) {
+	kiroCreditsCostMultiplier := 1.0
+	if s != nil && s.cfg != nil {
+		kiroCreditsCostMultiplier = s.cfg.Default.KiroCreditsCostMultiplier
+	}
+	applyKiroCreditsCostOverrideWithMultiplier(cost, result, multiplier, kiroCreditsCostMultiplier)
+}
+
+func applyKiroCreditsCostOverrideWithMultiplier(
+	cost *CostBreakdown,
+	result *ForwardResult,
+	multiplier float64,
+	kiroCreditsCostMultiplier float64,
+) {
+	if cost == nil {
+		return
+	}
+	creditsCost, ok := kiroCreditsCost(result, kiroCreditsCostMultiplier)
+	if !ok {
+		return
+	}
+	if multiplier < 0 {
+		multiplier = 0
+	}
+
+	// Kiro does not reliably expose Anthropic cache read/write token usage.
+	// When Kiro credits are available, they are the upstream billing signal; keep
+	// token fields as observability facts, but charge from credits to avoid
+	// overbilling cache-discounted Kiro requests as full input tokens.
+	// The credits-to-cost assumption is explicit via default.kiro_credits_cost_multiplier.
+	cost.InputCost = creditsCost
+	cost.OutputCost = 0
+	cost.ImageOutputCost = 0
+	cost.CacheCreationCost = 0
+	cost.CacheReadCost = 0
+	cost.TotalCost = creditsCost
+	cost.ActualCost = creditsCost * multiplier
+}
+
+func (s *GatewayService) kiroCreditsCost(result *ForwardResult) (float64, bool) {
+	kiroCreditsCostMultiplier := 1.0
+	if s != nil && s.cfg != nil {
+		kiroCreditsCostMultiplier = s.cfg.Default.KiroCreditsCostMultiplier
+	}
+	return kiroCreditsCost(result, kiroCreditsCostMultiplier)
+}
+
+func kiroCreditsCost(result *ForwardResult, kiroCreditsCostMultiplier float64) (float64, bool) {
+	if result == nil || result.Usage.UpstreamKiroCredits == nil {
+		return 0, false
+	}
+	credits := *result.Usage.UpstreamKiroCredits
+	if credits < 0 {
+		credits = 0
+	}
+	if kiroCreditsCostMultiplier < 0 {
+		kiroCreditsCostMultiplier = 0
+	}
+	return credits * kiroCreditsCostMultiplier, true
 }
 
 // buildRecordUsageLog 构建使用日志并设置计费模式。

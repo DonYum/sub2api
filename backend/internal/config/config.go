@@ -1248,12 +1248,13 @@ type TurnstileConfig struct {
 }
 
 type DefaultConfig struct {
-	AdminEmail      string  `mapstructure:"admin_email"`
-	AdminPassword   string  `mapstructure:"admin_password"`
-	UserConcurrency int     `mapstructure:"user_concurrency"`
-	UserBalance     float64 `mapstructure:"user_balance"`
-	APIKeyPrefix    string  `mapstructure:"api_key_prefix"`
-	RateMultiplier  float64 `mapstructure:"rate_multiplier"`
+	AdminEmail                string  `mapstructure:"admin_email"`
+	AdminPassword             string  `mapstructure:"admin_password"`
+	UserConcurrency           int     `mapstructure:"user_concurrency"`
+	UserBalance               float64 `mapstructure:"user_balance"`
+	APIKeyPrefix              string  `mapstructure:"api_key_prefix"`
+	RateMultiplier            float64 `mapstructure:"rate_multiplier"`
+	KiroCreditsCostMultiplier float64 `mapstructure:"kiro_credits_cost_multiplier"`
 }
 
 type RateLimitConfig struct {
@@ -1744,6 +1745,7 @@ func setDefaults() {
 	viper.SetDefault("default.user_balance", 0)
 	viper.SetDefault("default.api_key_prefix", "sk-")
 	viper.SetDefault("default.rate_multiplier", 1.0)
+	viper.SetDefault("default.kiro_credits_cost_multiplier", 1.0)
 
 	// RateLimit
 	viper.SetDefault("rate_limit.overload_cooldown_minutes", 10)
