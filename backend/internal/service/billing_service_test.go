@@ -75,21 +75,25 @@ func TestGetModelPricing_FallbackMatchesByFamily(t *testing.T) {
 	svc := newTestBillingService()
 
 	tests := []struct {
-		model         string
-		expectedInput float64
+		model          string
+		expectedInput  float64
+		expectedOutput float64
 	}{
-		{"claude-opus-4.5-20250101", 5e-6},
-		{"claude-3-opus-20240229", 15e-6},
-		{"claude-sonnet-4-20250514", 3e-6},
-		{"claude-3-5-sonnet-20241022", 3e-6},
-		{"claude-3-5-haiku-20241022", 1e-6},
-		{"claude-3-haiku-20240307", 0.25e-6},
+		{"claude-opus-4.5-20250101", 5e-6, 25e-6},
+		{"claude-opus-4-8-20260601", 5e-6, 25e-6},
+		{"claude-opus-4.8", 5e-6, 25e-6},
+		{"claude-3-opus-20240229", 15e-6, 75e-6},
+		{"claude-sonnet-4-20250514", 3e-6, 15e-6},
+		{"claude-3-5-sonnet-20241022", 3e-6, 15e-6},
+		{"claude-3-5-haiku-20241022", 1e-6, 5e-6},
+		{"claude-3-haiku-20240307", 0.25e-6, 1.25e-6},
 	}
 
 	for _, tt := range tests {
 		pricing, err := svc.GetModelPricing(tt.model)
 		require.NoError(t, err, "模型 %s", tt.model)
 		require.InDelta(t, tt.expectedInput, pricing.InputPricePerToken, 1e-12, "模型 %s 输入价格", tt.model)
+		require.InDelta(t, tt.expectedOutput, pricing.OutputPricePerToken, 1e-12, "模型 %s 输出价格", tt.model)
 	}
 }
 

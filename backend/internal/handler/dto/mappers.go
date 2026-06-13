@@ -4,7 +4,6 @@ package dto
 import (
 	"context"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -637,13 +636,6 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	}
 }
 
-const (
-	// Kiro credits use an Opus-like full-price baseline; the dynamic
-	// claude-opus-4-x LiteLLM prices can be lower and understate savings.
-	kiroOpusListInputCostPerToken  = 15e-6
-	kiroOpusListOutputCostPerToken = 75e-6
-)
-
 // EnrichKiroCostEstimates adds display-only Kiro savings metrics to usage DTOs.
 // The estimates are not persisted and never affect billing.
 func EnrichKiroCostEstimates(
@@ -663,13 +655,9 @@ func EnrichKiroCostEstimates(
 		return
 	}
 
-	listPrice := kiroListPriceEstimate(l)
-	if listPrice <= 0 {
-		var ok bool
-		listPrice, ok = billingListPriceEstimate(ctx, l, billingService, resolver)
-		if !ok {
-			return
-		}
+	listPrice, ok := billingListPriceEstimate(ctx, l, billingService, resolver)
+	if !ok {
+		return
 	}
 
 	creditsCost := *l.UpstreamKiroCredits
@@ -685,19 +673,6 @@ func EnrichKiroCostEstimates(
 	out.KiroListPriceCostEstimate = &listPrice
 	out.KiroSavingsCostEstimate = &savings
 	out.KiroDiscountRateEstimate = &discountRate
-}
-
-func kiroListPriceEstimate(l *service.UsageLog) float64 {
-	if l == nil || !isKiroOpusModel(l.Model) {
-		return 0
-	}
-	return float64(l.InputTokens)*kiroOpusListInputCostPerToken +
-		float64(l.OutputTokens)*kiroOpusListOutputCostPerToken
-}
-
-func isKiroOpusModel(model string) bool {
-	lower := strings.ToLower(model)
-	return strings.Contains(lower, "claude") && strings.Contains(lower, "opus")
 }
 
 func billingListPriceEstimate(
