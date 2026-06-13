@@ -109,12 +109,12 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	require.InDelta(t, 1.5, *adminDTO.AccountRateMultiplier, 1e-12)
 }
 
-func TestEnrichKiroCostEstimates_UsesBillingPricing(t *testing.T) {
+func TestEnrichKiroCostEstimates_UsesKiroOpusListPricing(t *testing.T) {
 	t.Parallel()
 
 	creditsCost := 3.474350248457712
 	log := &service.UsageLog{
-		Model:               "claude-opus-4.7",
+		Model:               "claude-opus-4-8",
 		InputTokens:         837755,
 		OutputTokens:        888,
 		UpstreamKiroCredits: &creditsCost,
@@ -128,10 +128,63 @@ func TestEnrichKiroCostEstimates_UsesBillingPricing(t *testing.T) {
 	require.NotNil(t, dtoLog.KiroListPriceCostEstimate)
 	require.NotNil(t, dtoLog.KiroSavingsCostEstimate)
 	require.NotNil(t, dtoLog.KiroDiscountRateEstimate)
-	expectedListPrice := float64(log.InputTokens)*5e-6 + float64(log.OutputTokens)*25e-6
+	expectedListPrice := float64(log.InputTokens)*15e-6 + float64(log.OutputTokens)*75e-6
 	require.InDelta(t, expectedListPrice, *dtoLog.KiroListPriceCostEstimate, 1e-12)
 	require.InDelta(t, expectedListPrice-creditsCost, *dtoLog.KiroSavingsCostEstimate, 1e-12)
 	require.InDelta(t, (expectedListPrice-creditsCost)/expectedListPrice, *dtoLog.KiroDiscountRateEstimate, 1e-12)
+}
+
+func TestEnrichKiroCostEstimates_FallsBackToBillingPricingForNonOpus(t *testing.T) {
+	t.Parallel()
+
+	creditsCost := 0.001
+	log := &service.UsageLog{
+		Model:               "claude-sonnet-4-6",
+		InputTokens:         1000,
+		OutputTokens:        100,
+		UpstreamKiroCredits: &creditsCost,
+		TotalCost:           creditsCost,
+	}
+	dtoLog := UsageLogFromService(log)
+
+	billingService := service.NewBillingService(&config.Config{}, nil)
+	EnrichKiroCostEstimates(context.Background(), dtoLog, log, billingService, nil)
+
+	require.NotNil(t, dtoLog.KiroListPriceCostEstimate)
+	require.NotNil(t, dtoLog.KiroSavingsCostEstimate)
+	require.NotNil(t, dtoLog.KiroDiscountRateEstimate)
+	expectedListPrice := float64(log.InputTokens)*3e-6 + float64(log.OutputTokens)*15e-6
+	require.InDelta(t, expectedListPrice, *dtoLog.KiroListPriceCostEstimate, 1e-12)
+	require.InDelta(t, expectedListPrice-creditsCost, *dtoLog.KiroSavingsCostEstimate, 1e-12)
+	require.InDelta(t, (expectedListPrice-creditsCost)/expectedListPrice, *dtoLog.KiroDiscountRateEstimate, 1e-12)
+}
+
+func TestEnrichKiroCostEstimates_ClampsNegativeSavings(t *testing.T) {
+	t.Parallel()
+
+	creditsCost := 1.0
+	log := &service.UsageLog{
+		Model:               "claude-opus-4-8",
+		InputTokens:         1000,
+		OutputTokens:        0,
+		UpstreamKiroCredits: &creditsCost,
+		TotalCost:           creditsCost,
+	}
+	dtoLog := UsageLogFromService(log)
+
+	EnrichKiroCostEstimates(context.Background(), dtoLog, log, nil, nil)
+
+	require.NotNil(t, dtoLog.KiroListPriceCostEstimate)
+	require.NotNil(t, dtoLog.KiroSavingsCostEstimate)
+	require.NotNil(t, dtoLog.KiroDiscountRateEstimate)
+	require.InDelta(t, 0.015, *dtoLog.KiroListPriceCostEstimate, 1e-12)
+	require.Zero(t, *dtoLog.KiroSavingsCostEstimate)
+	require.Zero(t, *dtoLog.KiroDiscountRateEstimate)
+	require.Zero(t, dtoLog.CacheCreationTokens)
+	require.Zero(t, dtoLog.CacheReadTokens)
+	require.Equal(t, creditsCost, log.TotalCost)
+	require.Zero(t, log.CacheCreationTokens)
+	require.Zero(t, log.CacheReadTokens)
 }
 
 func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *testing.T) {
