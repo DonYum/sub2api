@@ -75,11 +75,17 @@ func TestParseSSEUsage_DeltaOverwritesWithNonZero(t *testing.T) {
 	usage := &ClaudeUsage{}
 
 	// GLM 等 API 会在 delta 中包含所有 usage 信息
-	svc.parseSSEUsage(`{"type":"message_delta","usage":{"input_tokens":200,"output_tokens":100,"cache_creation_input_tokens":30,"cache_read_input_tokens":60}}`, usage)
+	svc.parseSSEUsage(`{"type":"message_delta","usage":{"input_tokens":200,"output_tokens":100,"cache_creation_input_tokens":30,"cache_read_input_tokens":60,"upstream_kiro_credits":1.25,"upstream_kiro_input_tokens":100,"upstream_kiro_output_tokens":20}}`, usage)
 	require.Equal(t, 200, usage.InputTokens)
 	require.Equal(t, 100, usage.OutputTokens)
 	require.Equal(t, 30, usage.CacheCreationInputTokens)
 	require.Equal(t, 60, usage.CacheReadInputTokens)
+	require.NotNil(t, usage.UpstreamKiroCredits)
+	require.InDelta(t, 1.25, *usage.UpstreamKiroCredits, 0.000001)
+	require.NotNil(t, usage.UpstreamKiroInputTokens)
+	require.Equal(t, 100, *usage.UpstreamKiroInputTokens)
+	require.NotNil(t, usage.UpstreamKiroOutputTokens)
+	require.Equal(t, 20, *usage.UpstreamKiroOutputTokens)
 }
 
 func TestParseSSEUsage_DeltaDoesNotResetCacheCreationBreakdown(t *testing.T) {

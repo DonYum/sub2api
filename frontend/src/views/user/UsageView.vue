@@ -468,6 +468,18 @@
               <span class="text-gray-400">{{ t('admin.usage.cacheReadTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.cache_read_tokens.toLocaleString() }}</span>
             </div>
+            <div v-if="tokenTooltipData && tokenTooltipData.upstream_kiro_credits != null" class="mt-1.5 space-y-1.5 border-t border-gray-700 pt-1.5">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroCredits') }}</span>
+                <span class="font-medium text-emerald-300">{{ formatKiroCredits(tokenTooltipData.upstream_kiro_credits) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.upstream_kiro_input_tokens != null || tokenTooltipData.upstream_kiro_output_tokens != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroInputOutputTokens') }}</span>
+                <span class="font-medium text-emerald-300">
+                  {{ formatOptionalTokens(tokenTooltipData.upstream_kiro_input_tokens) }} / {{ formatOptionalTokens(tokenTooltipData.upstream_kiro_output_tokens) }}
+                </span>
+              </div>
+            </div>
           </div>
           <!-- Total -->
           <div class="flex items-center justify-between gap-6 border-t border-gray-700 pt-1.5">
@@ -812,6 +824,10 @@ const formatTokens = (value: number): string => {
   return value.toLocaleString()
 }
 
+const formatKiroCredits = (credits: number): string => credits.toLocaleString(undefined, { maximumFractionDigits: 6 })
+
+const formatOptionalTokens = (tokens?: number | null): string => tokens == null ? '-' : tokens.toLocaleString()
+
 type UsageTableQueryParams = UsageQueryParams & {
   sort_by?: string
   sort_order?: 'asc' | 'desc'
@@ -984,6 +1000,9 @@ const exportToCSV = async () => {
       'Output Tokens',
       'Cache Read Tokens',
       'Cache Creation Tokens',
+      'Kiro Credits',
+      'Kiro Input Tokens',
+      'Kiro Output Tokens',
       'Rate Multiplier',
       'Billed Cost',
       'Original Cost',
@@ -1003,6 +1022,9 @@ const exportToCSV = async () => {
         log.output_tokens,
         log.cache_read_tokens,
         log.cache_creation_tokens,
+        log.upstream_kiro_credits ?? '',
+        log.upstream_kiro_input_tokens ?? '',
+        log.upstream_kiro_output_tokens ?? '',
         log.rate_multiplier,
         (log.actual_cost ?? 0).toFixed(8),
         (log.total_cost ?? 0).toFixed(8),
