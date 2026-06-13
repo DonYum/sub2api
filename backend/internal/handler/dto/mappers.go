@@ -4,6 +4,7 @@ package dto
 import (
 	"context"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -636,9 +637,15 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 	}
 }
 
+const (
+	// Kiro credits use an Opus-like full-price baseline; the dynamic
+	// claude-opus-4-x LiteLLM prices can be lower and understate savings.
+	kiroOpusListInputCostPerToken  = 15e-6
+	kiroOpusListOutputCostPerToken = 75e-6
+)
+
 // EnrichKiroCostEstimates adds display-only Kiro savings metrics to usage DTOs.
-// The estimates are recomputed from the same billing service/pricing source used
-// for normal token billing. They are not persisted and never affect billing.
+// The estimates are not persisted and never affect billing.
 func EnrichKiroCostEstimates(
 	ctx context.Context,
 	out *UsageLog,
@@ -649,11 +656,58 @@ func EnrichKiroCostEstimates(
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if out == nil || l == nil || billingService == nil || l.UpstreamKiroCredits == nil {
+	if out == nil || l == nil || l.UpstreamKiroCredits == nil {
 		return
 	}
 	if l.Model == "" {
 		return
+	}
+
+	listPrice := kiroListPriceEstimate(l)
+	if listPrice <= 0 {
+		var ok bool
+		listPrice, ok = billingListPriceEstimate(ctx, l, billingService, resolver)
+		if !ok {
+			return
+		}
+	}
+
+	creditsCost := *l.UpstreamKiroCredits
+	if creditsCost < 0 {
+		creditsCost = 0
+	}
+	savings := listPrice - creditsCost
+	if savings < 0 {
+		savings = 0
+	}
+	discountRate := savings / listPrice
+
+	out.KiroListPriceCostEstimate = &listPrice
+	out.KiroSavingsCostEstimate = &savings
+	out.KiroDiscountRateEstimate = &discountRate
+}
+
+func kiroListPriceEstimate(l *service.UsageLog) float64 {
+	if l == nil || !isKiroOpusModel(l.Model) {
+		return 0
+	}
+	return float64(l.InputTokens)*kiroOpusListInputCostPerToken +
+		float64(l.OutputTokens)*kiroOpusListOutputCostPerToken
+}
+
+func isKiroOpusModel(model string) bool {
+	lower := strings.ToLower(model)
+	return strings.Contains(lower, "claude") && strings.Contains(lower, "opus")
+}
+
+func billingListPriceEstimate(
+	ctx context.Context,
+	l *service.UsageLog,
+	billingService *service.BillingService,
+	resolver *service.ModelPricingResolver,
+) (float64, bool) {
+	if billingService == nil {
+		return 0, false
 	}
 
 	tokens := service.UsageTokens{
@@ -683,22 +737,9 @@ func EnrichKiroCostEstimates(
 		cost, err = billingService.CalculateCostWithServiceTier(l.Model, tokens, 1.0, usageStringValue(l.ServiceTier))
 	}
 	if err != nil || cost == nil || cost.TotalCost <= 0 {
-		return
+		return 0, false
 	}
-
-	creditsCost := *l.UpstreamKiroCredits
-	if creditsCost < 0 {
-		creditsCost = 0
-	}
-	savings := cost.TotalCost - creditsCost
-	if savings < 0 {
-		savings = 0
-	}
-	discountRate := savings / cost.TotalCost
-
-	out.KiroListPriceCostEstimate = &cost.TotalCost
-	out.KiroSavingsCostEstimate = &savings
-	out.KiroDiscountRateEstimate = &discountRate
+	return cost.TotalCost, true
 }
 
 func usageStringValue(value *string) string {
