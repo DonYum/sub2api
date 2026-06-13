@@ -547,6 +547,9 @@ type ClaudeUsage struct {
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	UpstreamKiroCredits      *float64
+	UpstreamKiroInputTokens  *int
+	UpstreamKiroOutputTokens *int
 }
 
 // ForwardResult 转发结果
@@ -5902,6 +5905,7 @@ func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsag
 			usage.InputTokens = int(msgUsage.Get("input_tokens").Int())
 			usage.CacheCreationInputTokens = int(msgUsage.Get("cache_creation_input_tokens").Int())
 			usage.CacheReadInputTokens = int(msgUsage.Get("cache_read_input_tokens").Int())
+			parseKiroMeteringUsageGJSON(msgUsage, usage)
 
 			// 保持与通用解析一致：message_start 允许覆盖 5m/1h 明细（包括 0）。
 			cc5m := msgUsage.Get("cache_creation.ephemeral_5m_input_tokens")
@@ -5926,6 +5930,7 @@ func (s *GatewayService) parseSSEUsagePassthrough(data string, usage *ClaudeUsag
 			if v := deltaUsage.Get("cache_read_input_tokens").Int(); v > 0 {
 				usage.CacheReadInputTokens = int(v)
 			}
+			parseKiroMeteringUsageGJSON(deltaUsage, usage)
 
 			cc5m := deltaUsage.Get("cache_creation.ephemeral_5m_input_tokens")
 			cc1h := deltaUsage.Get("cache_creation.ephemeral_1h_input_tokens")
@@ -5976,6 +5981,7 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 	usage.OutputTokens = int(usageNode.Get("output_tokens").Int())
 	usage.CacheCreationInputTokens = int(usageNode.Get("cache_creation_input_tokens").Int())
 	usage.CacheReadInputTokens = int(usageNode.Get("cache_read_input_tokens").Int())
+	parseKiroMeteringUsageGJSON(usageNode, usage)
 
 	cc5m := usageNode.Get("cache_creation.ephemeral_5m_input_tokens").Int()
 	cc1h := usageNode.Get("cache_creation.ephemeral_1h_input_tokens").Int()
@@ -5992,6 +5998,24 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 		}
 	}
 	return usage
+}
+
+func parseKiroMeteringUsageGJSON(node gjson.Result, usage *ClaudeUsage) {
+	if usage == nil || !node.Exists() {
+		return
+	}
+	if credits := node.Get("upstream_kiro_credits"); credits.Exists() {
+		v := credits.Float()
+		usage.UpstreamKiroCredits = &v
+	}
+	if inputTokens := node.Get("upstream_kiro_input_tokens"); inputTokens.Exists() {
+		v := int(inputTokens.Int())
+		usage.UpstreamKiroInputTokens = &v
+	}
+	if outputTokens := node.Get("upstream_kiro_output_tokens"); outputTokens.Exists() {
+		v := int(outputTokens.Int())
+		usage.UpstreamKiroOutputTokens = &v
+	}
 }
 
 func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
@@ -8185,6 +8209,12 @@ type sseUsagePatch struct {
 	hasCacheCreation5m       bool
 	cacheCreation1hTokens    int
 	hasCacheCreation1h       bool
+	upstreamKiroCredits      float64
+	hasUpstreamKiroCredits   bool
+	upstreamKiroInputTokens  int
+	hasUpstreamKiroInput     bool
+	upstreamKiroOutputTokens int
+	hasUpstreamKiroOutput    bool
 }
 
 func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePatch {
@@ -8214,6 +8244,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 		if v, ok := parseSSEUsageInt(usageObj["cache_read_input_tokens"]); ok {
 			patch.cacheReadInputTokens = v
 		}
+		parseKiroMeteringUsageMap(usageObj, patch)
 		if cc, ok := usageObj["cache_creation"].(map[string]any); ok {
 			if v, exists := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"]); exists {
 				patch.cacheCreation5mTokens = v
@@ -8249,6 +8280,7 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			patch.cacheReadInputTokens = v
 			patch.hasCacheReadInput = true
 		}
+		parseKiroMeteringUsageMap(usageObj, patch)
 		if cc, ok := usageObj["cache_creation"].(map[string]any); ok {
 			if v, exists := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"]); exists && v > 0 {
 				patch.cacheCreation5mTokens = v
@@ -8288,6 +8320,33 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
 	}
+	if patch.hasUpstreamKiroCredits {
+		usage.UpstreamKiroCredits = &patch.upstreamKiroCredits
+	}
+	if patch.hasUpstreamKiroInput {
+		usage.UpstreamKiroInputTokens = &patch.upstreamKiroInputTokens
+	}
+	if patch.hasUpstreamKiroOutput {
+		usage.UpstreamKiroOutputTokens = &patch.upstreamKiroOutputTokens
+	}
+}
+
+func parseKiroMeteringUsageMap(usageObj map[string]any, patch *sseUsagePatch) {
+	if patch == nil || len(usageObj) == 0 {
+		return
+	}
+	if v, ok := parseSSEUsageFloat(usageObj["upstream_kiro_credits"]); ok {
+		patch.upstreamKiroCredits = v
+		patch.hasUpstreamKiroCredits = true
+	}
+	if v, ok := parseSSEUsageInt(usageObj["upstream_kiro_input_tokens"]); ok {
+		patch.upstreamKiroInputTokens = v
+		patch.hasUpstreamKiroInput = true
+	}
+	if v, ok := parseSSEUsageInt(usageObj["upstream_kiro_output_tokens"]); ok {
+		patch.upstreamKiroOutputTokens = v
+		patch.hasUpstreamKiroOutput = true
+	}
 }
 
 func parseSSEUsageInt(value any) (int, bool) {
@@ -8311,6 +8370,30 @@ func parseSSEUsageInt(value any) (int, bool) {
 		}
 	case string:
 		if parsed, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			return parsed, true
+		}
+	}
+	return 0, false
+}
+
+func parseSSEUsageFloat(value any) (float64, bool) {
+	switch v := value.(type) {
+	case float64:
+		return v, true
+	case float32:
+		return float64(v), true
+	case int:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case json.Number:
+		if f, err := v.Float64(); err == nil {
+			return f, true
+		}
+	case string:
+		if parsed, err := strconv.ParseFloat(strings.TrimSpace(v), 64); err == nil {
 			return parsed, true
 		}
 	}
@@ -9131,19 +9214,23 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
 	if apiKey.GroupID != nil {
-		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
-			// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
-			// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
-			UsageTokens{
-				InputTokens:         result.Usage.InputTokens,
-				OutputTokens:        result.Usage.OutputTokens,
-				CacheCreationTokens: result.Usage.CacheCreationInputTokens,
-				CacheReadTokens:     result.Usage.CacheReadInputTokens,
-				ImageOutputTokens:   result.Usage.ImageOutputTokens,
-			},
-			cost.TotalCost,
-		)
+		if kiroCost, ok := s.kiroCreditsCost(result); ok {
+			usageLog.AccountStatsCost = &kiroCost
+		} else {
+			applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
+				account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
+				// Anthropic's input_tokens excludes cache_read and cache_creation (billed separately);
+				// OpenAI gateway uses actualInputTokens which also excludes cache_read for the same reason.
+				UsageTokens{
+					InputTokens:         result.Usage.InputTokens,
+					OutputTokens:        result.Usage.OutputTokens,
+					CacheCreationTokens: result.Usage.CacheCreationInputTokens,
+					CacheReadTokens:     result.Usage.CacheReadInputTokens,
+					ImageOutputTokens:   result.Usage.ImageOutputTokens,
+				},
+				cost.TotalCost,
+			)
+		}
 	}
 
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple {
@@ -9311,7 +9398,69 @@ func (s *GatewayService) calculateTokenCost(
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 		return &CostBreakdown{ActualCost: 0}
 	}
+	s.applyKiroCreditsCostOverride(cost, result, multiplier)
 	return cost
+}
+
+func (s *GatewayService) applyKiroCreditsCostOverride(cost *CostBreakdown, result *ForwardResult, multiplier float64) {
+	kiroCreditsCostMultiplier := 1.0
+	if s != nil && s.cfg != nil {
+		kiroCreditsCostMultiplier = s.cfg.Default.KiroCreditsCostMultiplier
+	}
+	applyKiroCreditsCostOverrideWithMultiplier(cost, result, multiplier, kiroCreditsCostMultiplier)
+}
+
+func applyKiroCreditsCostOverrideWithMultiplier(
+	cost *CostBreakdown,
+	result *ForwardResult,
+	multiplier float64,
+	kiroCreditsCostMultiplier float64,
+) {
+	if cost == nil {
+		return
+	}
+	creditsCost, ok := kiroCreditsCost(result, kiroCreditsCostMultiplier)
+	if !ok {
+		return
+	}
+	if multiplier < 0 {
+		multiplier = 0
+	}
+
+	// Kiro does not reliably expose Anthropic cache read/write token usage.
+	// When Kiro credits are available, they are the upstream billing signal; keep
+	// token fields as observability facts, but charge from credits to avoid
+	// overbilling cache-discounted Kiro requests as full input tokens.
+	// The credits-to-cost assumption is explicit via default.kiro_credits_cost_multiplier.
+	cost.InputCost = creditsCost
+	cost.OutputCost = 0
+	cost.ImageOutputCost = 0
+	cost.CacheCreationCost = 0
+	cost.CacheReadCost = 0
+	cost.TotalCost = creditsCost
+	cost.ActualCost = creditsCost * multiplier
+}
+
+func (s *GatewayService) kiroCreditsCost(result *ForwardResult) (float64, bool) {
+	kiroCreditsCostMultiplier := 1.0
+	if s != nil && s.cfg != nil {
+		kiroCreditsCostMultiplier = s.cfg.Default.KiroCreditsCostMultiplier
+	}
+	return kiroCreditsCost(result, kiroCreditsCostMultiplier)
+}
+
+func kiroCreditsCost(result *ForwardResult, kiroCreditsCostMultiplier float64) (float64, bool) {
+	if result == nil || result.Usage.UpstreamKiroCredits == nil {
+		return 0, false
+	}
+	credits := *result.Usage.UpstreamKiroCredits
+	if credits < 0 {
+		credits = 0
+	}
+	if kiroCreditsCostMultiplier < 0 {
+		kiroCreditsCostMultiplier = 0
+	}
+	return credits * kiroCreditsCostMultiplier, true
 }
 
 // buildRecordUsageLog 构建使用日志并设置计费模式。
@@ -9335,44 +9484,47 @@ func (s *GatewayService) buildRecordUsageLog(
 	durationMs := int(result.Duration.Milliseconds())
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	usageLog := &UsageLog{
-		UserID:                user.ID,
-		APIKeyID:              apiKey.ID,
-		AccountID:             account.ID,
-		RequestID:             requestID,
-		Model:                 result.Model,
-		RequestedModel:        requestedModel,
-		UpstreamModel:         optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
-		ReasoningEffort:       result.ReasoningEffort,
-		InboundEndpoint:       optionalTrimmedStringPtr(input.InboundEndpoint),
-		UpstreamEndpoint:      optionalTrimmedStringPtr(input.UpstreamEndpoint),
-		InputTokens:           result.Usage.InputTokens,
-		OutputTokens:          result.Usage.OutputTokens,
-		CacheCreationTokens:   result.Usage.CacheCreationInputTokens,
-		CacheReadTokens:       result.Usage.CacheReadInputTokens,
-		CacheCreation5mTokens: result.Usage.CacheCreation5mTokens,
-		CacheCreation1hTokens: result.Usage.CacheCreation1hTokens,
-		ImageOutputTokens:     result.Usage.ImageOutputTokens,
-		RateMultiplier:        multiplier,
-		AccountRateMultiplier: &accountRateMultiplier,
-		BillingType:           billingType,
-		BillingMode:           resolveBillingMode(result, cost),
-		Stream:                result.Stream,
-		DurationMs:            &durationMs,
-		FirstTokenMs:          result.FirstTokenMs,
-		ImageCount:            result.ImageCount,
-		ImageSize:             optionalTrimmedStringPtr(result.ImageSize),
-		ImageInputSize:        optionalTrimmedStringPtr(result.ImageInputSize),
-		ImageOutputSize:       optionalTrimmedStringPtr(result.ImageOutputSize),
-		ImageSizeSource:       optionalTrimmedStringPtr(result.ImageSizeSource),
-		ImageSizeBreakdown:    result.ImageSizeBreakdown,
-		CacheTTLOverridden:    cacheTTLOverridden,
-		ChannelID:             optionalInt64Ptr(input.ChannelID),
-		ModelMappingChain:     optionalTrimmedStringPtr(input.ModelMappingChain),
-		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
-		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
-		GroupID:               apiKey.GroupID,
-		SubscriptionID:        optionalSubscriptionID(subscription),
-		CreatedAt:             time.Now(),
+		UserID:                   user.ID,
+		APIKeyID:                 apiKey.ID,
+		AccountID:                account.ID,
+		RequestID:                requestID,
+		Model:                    result.Model,
+		RequestedModel:           requestedModel,
+		UpstreamModel:            optionalNonEqualStringPtr(result.UpstreamModel, result.Model),
+		ReasoningEffort:          result.ReasoningEffort,
+		InboundEndpoint:          optionalTrimmedStringPtr(input.InboundEndpoint),
+		UpstreamEndpoint:         optionalTrimmedStringPtr(input.UpstreamEndpoint),
+		InputTokens:              result.Usage.InputTokens,
+		OutputTokens:             result.Usage.OutputTokens,
+		CacheCreationTokens:      result.Usage.CacheCreationInputTokens,
+		CacheReadTokens:          result.Usage.CacheReadInputTokens,
+		CacheCreation5mTokens:    result.Usage.CacheCreation5mTokens,
+		CacheCreation1hTokens:    result.Usage.CacheCreation1hTokens,
+		UpstreamKiroCredits:      result.Usage.UpstreamKiroCredits,
+		UpstreamKiroInputTokens:  result.Usage.UpstreamKiroInputTokens,
+		UpstreamKiroOutputTokens: result.Usage.UpstreamKiroOutputTokens,
+		ImageOutputTokens:        result.Usage.ImageOutputTokens,
+		RateMultiplier:           multiplier,
+		AccountRateMultiplier:    &accountRateMultiplier,
+		BillingType:              billingType,
+		BillingMode:              resolveBillingMode(result, cost),
+		Stream:                   result.Stream,
+		DurationMs:               &durationMs,
+		FirstTokenMs:             result.FirstTokenMs,
+		ImageCount:               result.ImageCount,
+		ImageSize:                optionalTrimmedStringPtr(result.ImageSize),
+		ImageInputSize:           optionalTrimmedStringPtr(result.ImageInputSize),
+		ImageOutputSize:          optionalTrimmedStringPtr(result.ImageOutputSize),
+		ImageSizeSource:          optionalTrimmedStringPtr(result.ImageSizeSource),
+		ImageSizeBreakdown:       result.ImageSizeBreakdown,
+		CacheTTLOverridden:       cacheTTLOverridden,
+		ChannelID:                optionalInt64Ptr(input.ChannelID),
+		ModelMappingChain:        optionalTrimmedStringPtr(input.ModelMappingChain),
+		UserAgent:                optionalTrimmedStringPtr(input.UserAgent),
+		IPAddress:                optionalTrimmedStringPtr(input.IPAddress),
+		GroupID:                  apiKey.GroupID,
+		SubscriptionID:           optionalSubscriptionID(subscription),
+		CreatedAt:                time.Now(),
 	}
 	if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier

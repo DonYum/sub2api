@@ -2,6 +2,7 @@
 package dto
 
 import (
+	"context"
 	"strconv"
 	"time"
 
@@ -581,55 +582,130 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		requestedModel = l.Model
 	}
 	return UsageLog{
-		ID:                    l.ID,
-		UserID:                l.UserID,
-		APIKeyID:              l.APIKeyID,
-		AccountID:             l.AccountID,
-		RequestID:             l.RequestID,
-		Model:                 requestedModel,
-		ServiceTier:           l.ServiceTier,
-		ReasoningEffort:       l.ReasoningEffort,
-		InboundEndpoint:       l.InboundEndpoint,
-		UpstreamEndpoint:      l.UpstreamEndpoint,
-		GroupID:               l.GroupID,
-		SubscriptionID:        l.SubscriptionID,
+		ID:                       l.ID,
+		UserID:                   l.UserID,
+		APIKeyID:                 l.APIKeyID,
+		AccountID:                l.AccountID,
+		RequestID:                l.RequestID,
+		Model:                    requestedModel,
+		ServiceTier:              l.ServiceTier,
+		ReasoningEffort:          l.ReasoningEffort,
+		InboundEndpoint:          l.InboundEndpoint,
+		UpstreamEndpoint:         l.UpstreamEndpoint,
+		GroupID:                  l.GroupID,
+		SubscriptionID:           l.SubscriptionID,
+		InputTokens:              l.InputTokens,
+		OutputTokens:             l.OutputTokens,
+		CacheCreationTokens:      l.CacheCreationTokens,
+		CacheReadTokens:          l.CacheReadTokens,
+		CacheCreation5mTokens:    l.CacheCreation5mTokens,
+		CacheCreation1hTokens:    l.CacheCreation1hTokens,
+		UpstreamKiroCredits:      l.UpstreamKiroCredits,
+		UpstreamKiroInputTokens:  l.UpstreamKiroInputTokens,
+		UpstreamKiroOutputTokens: l.UpstreamKiroOutputTokens,
+		InputCost:                l.InputCost,
+		OutputCost:               l.OutputCost,
+		CacheCreationCost:        l.CacheCreationCost,
+		CacheReadCost:            l.CacheReadCost,
+		TotalCost:                l.TotalCost,
+		ActualCost:               l.ActualCost,
+		RateMultiplier:           l.RateMultiplier,
+		BillingType:              l.BillingType,
+		RequestType:              requestType.String(),
+		Stream:                   stream,
+		OpenAIWSMode:             openAIWSMode,
+		DurationMs:               l.DurationMs,
+		FirstTokenMs:             l.FirstTokenMs,
+		ImageCount:               l.ImageCount,
+		ImageSize:                l.ImageSize,
+		ImageInputSize:           l.ImageInputSize,
+		ImageOutputSize:          l.ImageOutputSize,
+		ImageOutputTokens:        l.ImageOutputTokens,
+		ImageOutputCost:          l.ImageOutputCost,
+		ImageSizeSource:          l.ImageSizeSource,
+		ImageSizeBreakdown:       l.ImageSizeBreakdown,
+		MediaType:                l.MediaType,
+		UserAgent:                l.UserAgent,
+		CacheTTLOverridden:       l.CacheTTLOverridden,
+		BillingMode:              l.BillingMode,
+		CreatedAt:                l.CreatedAt,
+		User:                     UserFromServiceShallow(l.User),
+		APIKey:                   APIKeyFromService(l.APIKey),
+		Group:                    GroupFromServiceShallow(l.Group),
+		Subscription:             UserSubscriptionFromService(l.Subscription),
+	}
+}
+
+// EnrichKiroCostEstimates adds display-only Kiro savings metrics to usage DTOs.
+// The estimates are recomputed from the same billing service/pricing source used
+// for normal token billing. They are not persisted and never affect billing.
+func EnrichKiroCostEstimates(
+	ctx context.Context,
+	out *UsageLog,
+	l *service.UsageLog,
+	billingService *service.BillingService,
+	resolver *service.ModelPricingResolver,
+) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if out == nil || l == nil || billingService == nil || l.UpstreamKiroCredits == nil {
+		return
+	}
+	if l.Model == "" {
+		return
+	}
+
+	tokens := service.UsageTokens{
 		InputTokens:           l.InputTokens,
 		OutputTokens:          l.OutputTokens,
 		CacheCreationTokens:   l.CacheCreationTokens,
 		CacheReadTokens:       l.CacheReadTokens,
 		CacheCreation5mTokens: l.CacheCreation5mTokens,
 		CacheCreation1hTokens: l.CacheCreation1hTokens,
-		InputCost:             l.InputCost,
-		OutputCost:            l.OutputCost,
-		CacheCreationCost:     l.CacheCreationCost,
-		CacheReadCost:         l.CacheReadCost,
-		TotalCost:             l.TotalCost,
-		ActualCost:            l.ActualCost,
-		RateMultiplier:        l.RateMultiplier,
-		BillingType:           l.BillingType,
-		RequestType:           requestType.String(),
-		Stream:                stream,
-		OpenAIWSMode:          openAIWSMode,
-		DurationMs:            l.DurationMs,
-		FirstTokenMs:          l.FirstTokenMs,
-		ImageCount:            l.ImageCount,
-		ImageSize:             l.ImageSize,
-		ImageInputSize:        l.ImageInputSize,
-		ImageOutputSize:       l.ImageOutputSize,
 		ImageOutputTokens:     l.ImageOutputTokens,
-		ImageOutputCost:       l.ImageOutputCost,
-		ImageSizeSource:       l.ImageSizeSource,
-		ImageSizeBreakdown:    l.ImageSizeBreakdown,
-		MediaType:             l.MediaType,
-		UserAgent:             l.UserAgent,
-		CacheTTLOverridden:    l.CacheTTLOverridden,
-		BillingMode:           l.BillingMode,
-		CreatedAt:             l.CreatedAt,
-		User:                  UserFromServiceShallow(l.User),
-		APIKey:                APIKeyFromService(l.APIKey),
-		Group:                 GroupFromServiceShallow(l.Group),
-		Subscription:          UserSubscriptionFromService(l.Subscription),
 	}
+
+	var cost *service.CostBreakdown
+	var err error
+	if resolver != nil {
+		cost, err = billingService.CalculateCostUnified(service.CostInput{
+			Ctx:            ctx,
+			Model:          l.Model,
+			GroupID:        l.GroupID,
+			Tokens:         tokens,
+			RequestCount:   1,
+			RateMultiplier: 1.0,
+			ServiceTier:    usageStringValue(l.ServiceTier),
+			Resolver:       resolver,
+		})
+	} else {
+		cost, err = billingService.CalculateCostWithServiceTier(l.Model, tokens, 1.0, usageStringValue(l.ServiceTier))
+	}
+	if err != nil || cost == nil || cost.TotalCost <= 0 {
+		return
+	}
+
+	creditsCost := *l.UpstreamKiroCredits
+	if creditsCost < 0 {
+		creditsCost = 0
+	}
+	savings := cost.TotalCost - creditsCost
+	if savings < 0 {
+		savings = 0
+	}
+	discountRate := savings / cost.TotalCost
+
+	out.KiroListPriceCostEstimate = &cost.TotalCost
+	out.KiroSavingsCostEstimate = &savings
+	out.KiroDiscountRateEstimate = &discountRate
+}
+
+func usageStringValue(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 // UsageLogFromService converts a service UsageLog to DTO for regular users.

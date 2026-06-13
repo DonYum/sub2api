@@ -288,6 +288,26 @@
                     <span v-if="row.cache_ttl_overridden" :title="t('usage.cacheTtlOverriddenHint')" class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-rose-100 text-rose-600 ring-1 ring-inset ring-rose-200 dark:bg-rose-500/20 dark:text-rose-400 dark:ring-rose-500/30 cursor-help">R</span>
                   </div>
                 </div>
+                <div v-if="row.upstream_kiro_credits != null" class="flex items-center gap-2">
+                  <div class="inline-flex items-center gap-1" :title="t('usage.kiroCredits')">
+                    <span class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-500/30">Kiro</span>
+                    <span class="font-medium text-emerald-600 dark:text-emerald-300">{{
+                      formatKiroCredits(row.upstream_kiro_credits)
+                    }}</span>
+                    <span
+                      v-if="row.kiro_savings_cost_estimate != null"
+                      class="font-medium text-teal-600 dark:text-teal-300"
+                    >
+                      {{ t('usage.kiroSavingsShort') }} {{ formatKiroCost(row.kiro_savings_cost_estimate) }}
+                    </span>
+                    <span
+                      v-if="row.kiro_discount_rate_estimate != null"
+                      class="text-xs font-medium text-teal-600 dark:text-teal-300"
+                    >
+                      {{ formatKiroDiscountRate(row.kiro_discount_rate_estimate) }}
+                    </span>
+                  </div>
+                </div>
                 <div v-if="hasImageOutputTokens(row)" class="flex items-center gap-2">
                   <div class="inline-flex items-center gap-1">
                     <svg class="h-3.5 w-3.5 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
@@ -467,6 +487,30 @@
             <div v-if="tokenTooltipData && tokenTooltipData.cache_read_tokens > 0" class="flex items-center justify-between gap-4">
               <span class="text-gray-400">{{ t('admin.usage.cacheReadTokens') }}</span>
               <span class="font-medium text-white">{{ tokenTooltipData.cache_read_tokens.toLocaleString() }}</span>
+            </div>
+            <div v-if="tokenTooltipData && tokenTooltipData.upstream_kiro_credits != null" class="mt-1.5 space-y-1.5 border-t border-gray-700 pt-1.5">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroCredits') }}</span>
+                <span class="font-medium text-emerald-300">{{ formatKiroCredits(tokenTooltipData.upstream_kiro_credits) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_list_price_cost_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroListPriceCostEstimate') }}</span>
+                <span class="font-medium text-white">{{ formatKiroCost(tokenTooltipData.kiro_list_price_cost_estimate) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_savings_cost_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroSavingsCostEstimate') }}</span>
+                <span class="font-medium text-teal-300">{{ formatKiroCost(tokenTooltipData.kiro_savings_cost_estimate) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_discount_rate_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroDiscountRateEstimate') }}</span>
+                <span class="font-medium text-teal-300">{{ formatKiroDiscountRate(tokenTooltipData.kiro_discount_rate_estimate) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.upstream_kiro_input_tokens != null || tokenTooltipData.upstream_kiro_output_tokens != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroInputOutputTokens') }}</span>
+                <span class="font-medium text-emerald-300">
+                  {{ formatOptionalTokens(tokenTooltipData.upstream_kiro_input_tokens) }} / {{ formatOptionalTokens(tokenTooltipData.upstream_kiro_output_tokens) }}
+                </span>
+              </div>
             </div>
           </div>
           <!-- Total -->
@@ -812,6 +856,14 @@ const formatTokens = (value: number): string => {
   return value.toLocaleString()
 }
 
+const formatKiroCredits = (credits: number): string => credits.toLocaleString(undefined, { maximumFractionDigits: 6 })
+
+const formatKiroCost = (cost: number): string => `$${cost.toFixed(6)}`
+
+const formatKiroDiscountRate = (rate: number): string => `${(rate * 100).toFixed(1)}%`
+
+const formatOptionalTokens = (tokens?: number | null): string => tokens == null ? '-' : tokens.toLocaleString()
+
 type UsageTableQueryParams = UsageQueryParams & {
   sort_by?: string
   sort_order?: 'asc' | 'desc'
@@ -984,6 +1036,12 @@ const exportToCSV = async () => {
       'Output Tokens',
       'Cache Read Tokens',
       'Cache Creation Tokens',
+      'Kiro Credits',
+      'Kiro List Price Cost Estimate',
+      'Kiro Savings Cost Estimate',
+      'Kiro Discount Rate Estimate',
+      'Kiro Input Tokens',
+      'Kiro Output Tokens',
       'Rate Multiplier',
       'Billed Cost',
       'Original Cost',
@@ -1003,6 +1061,12 @@ const exportToCSV = async () => {
         log.output_tokens,
         log.cache_read_tokens,
         log.cache_creation_tokens,
+        log.upstream_kiro_credits ?? '',
+        log.kiro_list_price_cost_estimate != null ? log.kiro_list_price_cost_estimate.toFixed(8) : '',
+        log.kiro_savings_cost_estimate != null ? log.kiro_savings_cost_estimate.toFixed(8) : '',
+        log.kiro_discount_rate_estimate != null ? formatKiroDiscountRate(log.kiro_discount_rate_estimate) : '',
+        log.upstream_kiro_input_tokens ?? '',
+        log.upstream_kiro_output_tokens ?? '',
         log.rate_multiplier,
         (log.actual_cost ?? 0).toFixed(8),
         (log.total_cost ?? 0).toFixed(8),

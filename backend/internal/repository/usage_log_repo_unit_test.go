@@ -65,3 +65,32 @@ func TestBuildUsageLogBatchInsertQuery_UsesConflictDoNothing(t *testing.T) {
 	require.Contains(t, query, "ON CONFLICT (request_id, api_key_id) DO NOTHING")
 	require.NotContains(t, strings.ToUpper(query), "DO UPDATE")
 }
+
+func TestPrepareUsageLogInsert_IncludesKiroMeteringFields(t *testing.T) {
+	credits := 1.25
+	kiroInput := 100
+	kiroOutput := 20
+	log := &service.UsageLog{
+		UserID:                   1,
+		APIKeyID:                 2,
+		AccountID:                3,
+		RequestID:                "req-kiro-metering",
+		Model:                    "claude-sonnet-4-6",
+		InputTokens:              10,
+		OutputTokens:             5,
+		UpstreamKiroCredits:      &credits,
+		UpstreamKiroInputTokens:  &kiroInput,
+		UpstreamKiroOutputTokens: &kiroOutput,
+		CreatedAt:                time.Now().UTC(),
+	}
+
+	prepared := prepareUsageLogInsert(log)
+
+	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
+	require.Equal(t, "numeric", usageLogInsertArgTypes[15])
+	require.Equal(t, "integer", usageLogInsertArgTypes[16])
+	require.Equal(t, "integer", usageLogInsertArgTypes[17])
+	require.Equal(t, &credits, prepared.args[15])
+	require.Equal(t, &kiroInput, prepared.args[16])
+	require.Equal(t, &kiroOutput, prepared.args[17])
+}

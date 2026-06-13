@@ -452,6 +452,13 @@ type UsageLog struct {
 	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
 	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
 
+	UpstreamKiroCredits       *float64 `json:"upstream_kiro_credits,omitempty"`
+	UpstreamKiroInputTokens   *int     `json:"upstream_kiro_input_tokens,omitempty"`
+	UpstreamKiroOutputTokens  *int     `json:"upstream_kiro_output_tokens,omitempty"`
+	KiroListPriceCostEstimate *float64 `json:"kiro_list_price_cost_estimate,omitempty"`
+	KiroSavingsCostEstimate   *float64 `json:"kiro_savings_cost_estimate,omitempty"`
+	KiroDiscountRateEstimate  *float64 `json:"kiro_discount_rate_estimate,omitempty"`
+
 	InputCost         float64 `json:"input_cost"`
 	OutputCost        float64 `json:"output_cost"`
 	CacheCreationCost float64 `json:"cache_creation_cost"`

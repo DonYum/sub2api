@@ -25,6 +25,8 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	billingService *service.BillingService
+	resolver       *service.ModelPricingResolver
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -33,12 +35,16 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	billingService *service.BillingService,
+	resolver *service.ModelPricingResolver,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		billingService: billingService,
+		resolver:       resolver,
 	}
 }
 
@@ -194,7 +200,9 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		item := dto.UsageLogFromServiceAdmin(&records[i])
+		dto.EnrichKiroCostEstimates(c.Request.Context(), &item.UsageLog, &records[i], h.billingService, h.resolver)
+		out = append(out, *item)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }

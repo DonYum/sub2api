@@ -1,9 +1,11 @@
 package dto
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
 )
@@ -105,6 +107,31 @@ func TestUsageLogFromService_IncludesServiceTierForUserAndAdmin(t *testing.T) {
 	require.Equal(t, upstreamEndpoint, *adminDTO.UpstreamEndpoint)
 	require.NotNil(t, adminDTO.AccountRateMultiplier)
 	require.InDelta(t, 1.5, *adminDTO.AccountRateMultiplier, 1e-12)
+}
+
+func TestEnrichKiroCostEstimates_UsesBillingPricing(t *testing.T) {
+	t.Parallel()
+
+	creditsCost := 3.474350248457712
+	log := &service.UsageLog{
+		Model:               "claude-opus-4.7",
+		InputTokens:         837755,
+		OutputTokens:        888,
+		UpstreamKiroCredits: &creditsCost,
+		TotalCost:           creditsCost,
+	}
+	dtoLog := UsageLogFromService(log)
+
+	billingService := service.NewBillingService(&config.Config{}, nil)
+	EnrichKiroCostEstimates(context.Background(), dtoLog, log, billingService, nil)
+
+	require.NotNil(t, dtoLog.KiroListPriceCostEstimate)
+	require.NotNil(t, dtoLog.KiroSavingsCostEstimate)
+	require.NotNil(t, dtoLog.KiroDiscountRateEstimate)
+	expectedListPrice := float64(log.InputTokens)*5e-6 + float64(log.OutputTokens)*25e-6
+	require.InDelta(t, expectedListPrice, *dtoLog.KiroListPriceCostEstimate, 1e-12)
+	require.InDelta(t, expectedListPrice-creditsCost, *dtoLog.KiroSavingsCostEstimate, 1e-12)
+	require.InDelta(t, (expectedListPrice-creditsCost)/expectedListPrice, *dtoLog.KiroDiscountRateEstimate, 1e-12)
 }
 
 func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *testing.T) {
