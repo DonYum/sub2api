@@ -132,6 +132,12 @@
                 <div class="inline-flex items-center gap-1" :title="t('usage.kiroCredits')">
                   <span class="inline-flex items-center rounded px-1 py-px text-[10px] font-medium leading-tight bg-emerald-100 text-emerald-700 ring-1 ring-inset ring-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-emerald-500/30">Kiro</span>
                   <span class="font-medium text-emerald-600 dark:text-emerald-300">{{ formatKiroCredits(row.upstream_kiro_credits) }}</span>
+                  <span v-if="row.kiro_savings_cost_estimate != null" class="font-medium text-teal-600 dark:text-teal-300">
+                    {{ t('usage.kiroSavingsShort') }} {{ formatKiroCost(row.kiro_savings_cost_estimate) }}
+                  </span>
+                  <span v-if="row.kiro_discount_rate_estimate != null" class="text-xs font-medium text-teal-600 dark:text-teal-300">
+                    {{ formatKiroDiscountRate(row.kiro_discount_rate_estimate) }}
+                  </span>
                 </div>
               </div>
               <div v-if="hasImageOutputTokens(row)" class="flex items-center gap-2">
@@ -272,6 +278,18 @@
               <div class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.kiroCredits') }}</span>
                 <span class="font-medium text-emerald-300">{{ formatKiroCredits(tokenTooltipData.upstream_kiro_credits) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_list_price_cost_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroListPriceCostEstimate') }}</span>
+                <span class="font-medium text-white">{{ formatKiroCost(tokenTooltipData.kiro_list_price_cost_estimate) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_savings_cost_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroSavingsCostEstimate') }}</span>
+                <span class="font-medium text-teal-300">{{ formatKiroCost(tokenTooltipData.kiro_savings_cost_estimate) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_discount_rate_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroDiscountRateEstimate') }}</span>
+                <span class="font-medium text-teal-300">{{ formatKiroDiscountRate(tokenTooltipData.kiro_discount_rate_estimate) }}</span>
               </div>
               <div v-if="tokenTooltipData.upstream_kiro_input_tokens != null || tokenTooltipData.upstream_kiro_output_tokens != null" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.kiroInputOutputTokens') }}</span>
@@ -520,6 +538,10 @@ const formatDuration = (ms: number | null | undefined): string => {
 }
 
 const formatKiroCredits = (credits: number): string => credits.toLocaleString(undefined, { maximumFractionDigits: 6 })
+
+const formatKiroCost = (cost: number): string => `$${cost.toFixed(6)}`
+
+const formatKiroDiscountRate = (rate: number): string => `${(rate * 100).toFixed(1)}%`
 
 const formatOptionalTokens = (tokens?: number | null): string => tokens == null ? '-' : tokens.toLocaleString()
 

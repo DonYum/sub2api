@@ -1231,6 +1231,9 @@ export interface UsageLog {
   upstream_kiro_credits?: number | null
   upstream_kiro_input_tokens?: number | null
   upstream_kiro_output_tokens?: number | null
+  kiro_list_price_cost_estimate?: number | null
+  kiro_savings_cost_estimate?: number | null
+  kiro_discount_rate_estimate?: number | null
 
   input_cost: number
   output_cost: number

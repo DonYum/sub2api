@@ -294,6 +294,18 @@
                     <span class="font-medium text-emerald-600 dark:text-emerald-300">{{
                       formatKiroCredits(row.upstream_kiro_credits)
                     }}</span>
+                    <span
+                      v-if="row.kiro_savings_cost_estimate != null"
+                      class="font-medium text-teal-600 dark:text-teal-300"
+                    >
+                      {{ t('usage.kiroSavingsShort') }} {{ formatKiroCost(row.kiro_savings_cost_estimate) }}
+                    </span>
+                    <span
+                      v-if="row.kiro_discount_rate_estimate != null"
+                      class="text-xs font-medium text-teal-600 dark:text-teal-300"
+                    >
+                      {{ formatKiroDiscountRate(row.kiro_discount_rate_estimate) }}
+                    </span>
                   </div>
                 </div>
                 <div v-if="hasImageOutputTokens(row)" class="flex items-center gap-2">
@@ -480,6 +492,18 @@
               <div class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.kiroCredits') }}</span>
                 <span class="font-medium text-emerald-300">{{ formatKiroCredits(tokenTooltipData.upstream_kiro_credits) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_list_price_cost_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroListPriceCostEstimate') }}</span>
+                <span class="font-medium text-white">{{ formatKiroCost(tokenTooltipData.kiro_list_price_cost_estimate) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_savings_cost_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroSavingsCostEstimate') }}</span>
+                <span class="font-medium text-teal-300">{{ formatKiroCost(tokenTooltipData.kiro_savings_cost_estimate) }}</span>
+              </div>
+              <div v-if="tokenTooltipData.kiro_discount_rate_estimate != null" class="flex items-center justify-between gap-4">
+                <span class="text-gray-400">{{ t('usage.kiroDiscountRateEstimate') }}</span>
+                <span class="font-medium text-teal-300">{{ formatKiroDiscountRate(tokenTooltipData.kiro_discount_rate_estimate) }}</span>
               </div>
               <div v-if="tokenTooltipData.upstream_kiro_input_tokens != null || tokenTooltipData.upstream_kiro_output_tokens != null" class="flex items-center justify-between gap-4">
                 <span class="text-gray-400">{{ t('usage.kiroInputOutputTokens') }}</span>
@@ -834,6 +858,10 @@ const formatTokens = (value: number): string => {
 
 const formatKiroCredits = (credits: number): string => credits.toLocaleString(undefined, { maximumFractionDigits: 6 })
 
+const formatKiroCost = (cost: number): string => `$${cost.toFixed(6)}`
+
+const formatKiroDiscountRate = (rate: number): string => `${(rate * 100).toFixed(1)}%`
+
 const formatOptionalTokens = (tokens?: number | null): string => tokens == null ? '-' : tokens.toLocaleString()
 
 type UsageTableQueryParams = UsageQueryParams & {
@@ -1009,6 +1037,9 @@ const exportToCSV = async () => {
       'Cache Read Tokens',
       'Cache Creation Tokens',
       'Kiro Credits',
+      'Kiro List Price Cost Estimate',
+      'Kiro Savings Cost Estimate',
+      'Kiro Discount Rate Estimate',
       'Kiro Input Tokens',
       'Kiro Output Tokens',
       'Rate Multiplier',
@@ -1031,6 +1062,9 @@ const exportToCSV = async () => {
         log.cache_read_tokens,
         log.cache_creation_tokens,
         log.upstream_kiro_credits ?? '',
+        log.kiro_list_price_cost_estimate != null ? log.kiro_list_price_cost_estimate.toFixed(8) : '',
+        log.kiro_savings_cost_estimate != null ? log.kiro_savings_cost_estimate.toFixed(8) : '',
+        log.kiro_discount_rate_estimate != null ? formatKiroDiscountRate(log.kiro_discount_rate_estimate) : '',
         log.upstream_kiro_input_tokens ?? '',
         log.upstream_kiro_output_tokens ?? '',
         log.rate_multiplier,

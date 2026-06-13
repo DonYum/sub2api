@@ -23,6 +23,8 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	opsService     *service.OpsService
 	settingService *service.SettingService
+	billingService *service.BillingService
+	resolver       *service.ModelPricingResolver
 }
 
 // NewUsageHandler creates a new UsageHandler
@@ -31,12 +33,16 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	opsService *service.OpsService,
 	settingService *service.SettingService,
+	billingService *service.BillingService,
+	resolver *service.ModelPricingResolver,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		opsService:     opsService,
 		settingService: settingService,
+		billingService: billingService,
+		resolver:       resolver,
 	}
 }
 
@@ -154,7 +160,9 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromService(&records[i]))
+		item := dto.UsageLogFromService(&records[i])
+		dto.EnrichKiroCostEstimates(c.Request.Context(), item, &records[i], h.billingService, h.resolver)
+		out = append(out, *item)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -297,7 +305,9 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UsageLogFromService(record))
+	out := dto.UsageLogFromService(record)
+	dto.EnrichKiroCostEstimates(c.Request.Context(), out, record, h.billingService, h.resolver)
+	response.Success(c, out)
 }
 
 // Stats handles getting usage statistics
