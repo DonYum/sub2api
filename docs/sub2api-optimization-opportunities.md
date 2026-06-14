@@ -405,7 +405,7 @@ OpenAI 兼容层持续变化，尤其 Responses、图片、WS、Codex 指令。�
 按真实客户入口分批合，不做"看到 PR 就合"：
 
 - 如果近期卖 OpenAI/Codex 流量：优先 context-window、Responses stream、Codex instructions。
-- 如果卖图片流量：优先 image billing 三件套。
+- 如果已经卖图片流量：image billing 三件套应从 P2 升到 P0，因为它和账单正确性同级，false image billing 会直接导致多收或少记。
 - 如果当前主要还是 Claude/Kiro：这些放 P2，不抢 P0/P1 资源。
 
 ## P3：插件化、大 UI、新支付/通知能力暂缓
