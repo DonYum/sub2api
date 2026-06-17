@@ -17,7 +17,6 @@ import (
 func newGatewayRecordUsageServiceForTest(usageRepo UsageLogRepository, userRepo UserRepository, subRepo UserSubscriptionRepository) *GatewayService {
 	cfg := &config.Config{}
 	cfg.Default.RateMultiplier = 1.1
-	cfg.Default.KiroCreditsCostMultiplier = 1.0
 	return NewGatewayService(
 		nil,
 		nil,
@@ -200,7 +199,9 @@ func TestGatewayServiceRecordUsage_KiroCreditsOverrideBillingCost(t *testing.T) 
 	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
 	credits := 3.25
-	expectedActualCost := credits * 1.1
+	accountRate := 0.25
+	groupID := int64(901)
+	expectedActualCost := credits * accountRate
 
 	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
 		Result: &ForwardResult{
@@ -214,11 +215,13 @@ func TestGatewayServiceRecordUsage_KiroCreditsOverrideBillingCost(t *testing.T) 
 			Duration: time.Second,
 		},
 		APIKey: &APIKey{
-			ID:    501,
-			Quota: 100,
+			ID:      501,
+			Quota:   100,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: 1},
 		},
 		User:          &User{ID: 601},
-		Account:       &Account{ID: 701},
+		Account:       &Account{ID: 701, RateMultiplier: &accountRate},
 		APIKeyService: quotaSvc,
 	})
 
@@ -235,6 +238,50 @@ func TestGatewayServiceRecordUsage_KiroCreditsOverrideBillingCost(t *testing.T) 
 	require.Zero(t, usageRepo.lastLog.CacheCreationCost)
 	require.Zero(t, usageRepo.lastLog.CacheReadCost)
 	require.InDelta(t, credits, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expectedActualCost, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, expectedActualCost, userRepo.lastAmount, 1e-12)
+	require.InDelta(t, expectedActualCost, quotaSvc.lastAmount, 1e-12)
+}
+
+func TestGatewayServiceRecordUsage_KiroCreditsOverrideStacksAccountAndGroupRates(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
+	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
+	credits := 3.25
+	accountRate := 0.25
+	groupRate := 0.5
+	groupID := int64(901)
+	expectedActualCost := credits * accountRate * groupRate
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_kiro_credits_account_group_billing",
+			Usage: ClaudeUsage{
+				InputTokens:         900000,
+				OutputTokens:        1000,
+				UpstreamKiroCredits: &credits,
+			},
+			Model:    "claude-opus-4-8",
+			Duration: time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      501,
+			Quota:   100,
+			GroupID: &groupID,
+			Group:   &Group{ID: groupID, RateMultiplier: groupRate},
+		},
+		User:          &User{ID: 601},
+		Account:       &Account{ID: 701, RateMultiplier: &accountRate},
+		APIKeyService: quotaSvc,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, credits, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, groupRate, usageRepo.lastLog.RateMultiplier, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.AccountRateMultiplier)
+	require.InDelta(t, accountRate, *usageRepo.lastLog.AccountRateMultiplier, 1e-12)
 	require.InDelta(t, expectedActualCost, usageRepo.lastLog.ActualCost, 1e-12)
 	require.InDelta(t, expectedActualCost, userRepo.lastAmount, 1e-12)
 	require.InDelta(t, expectedActualCost, quotaSvc.lastAmount, 1e-12)
@@ -271,45 +318,6 @@ func TestGatewayServiceRecordUsage_KiroCreditsOverrideAccountStatsCost(t *testin
 	require.NotNil(t, usageRepo.lastLog)
 	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
 	require.InDelta(t, credits, *usageRepo.lastLog.AccountStatsCost, 1e-12)
-}
-
-func TestGatewayServiceRecordUsage_KiroCreditsCostMultiplier(t *testing.T) {
-	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
-	userRepo := &openAIRecordUsageUserRepoStub{}
-	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
-	svc := newGatewayRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{})
-	svc.cfg.Default.KiroCreditsCostMultiplier = 0.5
-	credits := 3.25
-	expectedTotalCost := credits * 0.5
-	expectedActualCost := expectedTotalCost * 1.1
-
-	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
-		Result: &ForwardResult{
-			RequestID: "gateway_kiro_credits_cost_multiplier",
-			Usage: ClaudeUsage{
-				InputTokens:         900000,
-				OutputTokens:        1000,
-				UpstreamKiroCredits: &credits,
-			},
-			Model:    "claude-opus-4-8",
-			Duration: time.Second,
-		},
-		APIKey: &APIKey{
-			ID:    501,
-			Quota: 100,
-		},
-		User:          &User{ID: 601},
-		Account:       &Account{ID: 701},
-		APIKeyService: quotaSvc,
-	})
-
-	require.NoError(t, err)
-	require.NotNil(t, usageRepo.lastLog)
-	require.InDelta(t, expectedTotalCost, usageRepo.lastLog.InputCost, 1e-12)
-	require.InDelta(t, expectedTotalCost, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, expectedActualCost, usageRepo.lastLog.ActualCost, 1e-12)
-	require.InDelta(t, expectedActualCost, userRepo.lastAmount, 1e-12)
-	require.InDelta(t, expectedActualCost, quotaSvc.lastAmount, 1e-12)
 }
 
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {

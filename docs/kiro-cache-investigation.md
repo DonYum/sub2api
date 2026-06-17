@@ -44,16 +44,15 @@ sub2api 计费是纯 token 口径：`total_cost = input×价 + output×价 + cac
 
 ### 修复（`gateway_service.go` `applyKiroCreditsCostOverride`）
 当 `result.Usage.UpstreamKiroCredits != nil` 时，改用 Kiro 真实 credits 作为计费基准：
-- `total_cost = upstream_kiro_credits × default.kiro_credits_cost_multiplier`（默认 1.0）
-- `actual_cost = total_cost × rate_multiplier`
+- `total_cost = upstream_kiro_credits`
+- `actual_cost = total_cost × account_rate_multiplier × rate_multiplier`
 - `account_stats_cost` 同步用 credits 基准
 - **不伪造** `cache_creation_tokens` / `cache_read_tokens`（保持上游事实）
-- 负 credits / 负系数归零；非 Kiro 请求不进入 override
+- 负 credits 归零；非 Kiro 请求不进入 override
 
 经济正确性：用户的 power plan 10000 credits = $10000，即 **1 credit = $1**；且 credits 数值
 ≈ Anthropic 等价美元成本（受控实验 credits 0.1726 ≈ 10638 tok × $15/MTok ≈ $0.16）。
-故 multiplier 默认 1.0 合理；若后续数据显示偏差，调 `default.kiro_credits_cost_multiplier` 即可，
-无需改代码。
+账号倍率用于把具体 Kiro 账号成本折算进客户实际扣费；分组/用户倍率继续用于客户定价或折扣。
 
 ## 4. 问题三：缓存省钱效果不可见
 

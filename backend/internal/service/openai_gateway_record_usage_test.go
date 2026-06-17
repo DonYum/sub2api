@@ -1713,6 +1713,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesImageCoun
 		"gemini-image",
 		0.15,
 		1.0,
+		1.0,
 		nil,
 	)
 
@@ -1752,6 +1753,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingUsesSizeTier(
 		"gemini-image",
 		1.0,
 		1.0,
+		1.0,
 		nil,
 	)
 
@@ -1789,6 +1791,7 @@ func TestGatewayServiceCalculateRecordUsageCost_ChannelImageBillingNormalizesMis
 		&ForwardResult{Model: "gemini-image", ImageCount: 2, ImageSize: ""},
 		&APIKey{GroupID: i64p(groupID), Group: &Group{ID: groupID}},
 		"gemini-image",
+		1.0,
 		1.0,
 		1.0,
 		nil,

@@ -9261,7 +9261,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 计算费用
-	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, opts)
+	accountRateMultiplier := account.BillingRateMultiplier()
+	cost := s.calculateRecordUsageCost(ctx, result, apiKey, billingModel, multiplier, imageMultiplier, accountRateMultiplier, opts)
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
@@ -9271,7 +9272,6 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	// 创建使用日志
-	accountRateMultiplier := account.BillingRateMultiplier()
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
 
@@ -9340,18 +9340,19 @@ func (s *GatewayService) calculateRecordUsageCost(
 	billingModel string,
 	multiplier float64,
 	imageMultiplier float64,
+	accountRateMultiplier float64,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
 	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费
 	if result.ImageCount > 0 {
 		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
-			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
+			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, accountRateMultiplier, opts)
 		}
 		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
 	}
 
 	// Token 计费
-	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, opts)
+	return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, accountRateMultiplier, opts)
 }
 
 // resolveChannelPricing 检查指定模型是否存在渠道级别定价。
@@ -9420,6 +9421,7 @@ func (s *GatewayService) calculateTokenCost(
 	apiKey *APIKey,
 	billingModel string,
 	multiplier float64,
+	accountRateMultiplier float64,
 	opts *recordUsageOpts,
 ) *CostBreakdown {
 	tokens := UsageTokens{
@@ -9461,58 +9463,48 @@ func (s *GatewayService) calculateTokenCost(
 		logger.LegacyPrintf("service.gateway", "Calculate cost failed: %v", err)
 		return &CostBreakdown{ActualCost: 0}
 	}
-	s.applyKiroCreditsCostOverride(cost, result, multiplier)
+	applyKiroCreditsCostOverride(cost, result, multiplier, accountRateMultiplier)
 	return cost
 }
 
-func (s *GatewayService) applyKiroCreditsCostOverride(cost *CostBreakdown, result *ForwardResult, multiplier float64) {
-	kiroCreditsCostMultiplier := 1.0
-	if s != nil && s.cfg != nil {
-		kiroCreditsCostMultiplier = s.cfg.Default.KiroCreditsCostMultiplier
-	}
-	applyKiroCreditsCostOverrideWithMultiplier(cost, result, multiplier, kiroCreditsCostMultiplier)
-}
-
-func applyKiroCreditsCostOverrideWithMultiplier(
+func applyKiroCreditsCostOverride(
 	cost *CostBreakdown,
 	result *ForwardResult,
 	multiplier float64,
-	kiroCreditsCostMultiplier float64,
+	accountRateMultiplier float64,
 ) {
 	if cost == nil {
 		return
 	}
-	creditsCost, ok := kiroCreditsCost(result, kiroCreditsCostMultiplier)
+	creditsCost, ok := kiroCreditsCost(result)
 	if !ok {
 		return
 	}
 	if multiplier < 0 {
 		multiplier = 0
 	}
+	if accountRateMultiplier < 0 {
+		accountRateMultiplier = 1
+	}
 
 	// Kiro does not reliably expose Anthropic cache read/write token usage.
 	// When Kiro credits are available, they are the upstream billing signal; keep
 	// token fields as observability facts, but charge from credits to avoid
 	// overbilling cache-discounted Kiro requests as full input tokens.
-	// The credits-to-cost assumption is explicit via default.kiro_credits_cost_multiplier.
 	cost.InputCost = creditsCost
 	cost.OutputCost = 0
 	cost.ImageOutputCost = 0
 	cost.CacheCreationCost = 0
 	cost.CacheReadCost = 0
 	cost.TotalCost = creditsCost
-	cost.ActualCost = creditsCost * multiplier
+	cost.ActualCost = creditsCost * accountRateMultiplier * multiplier
 }
 
 func (s *GatewayService) kiroCreditsCost(result *ForwardResult) (float64, bool) {
-	kiroCreditsCostMultiplier := 1.0
-	if s != nil && s.cfg != nil {
-		kiroCreditsCostMultiplier = s.cfg.Default.KiroCreditsCostMultiplier
-	}
-	return kiroCreditsCost(result, kiroCreditsCostMultiplier)
+	return kiroCreditsCost(result)
 }
 
-func kiroCreditsCost(result *ForwardResult, kiroCreditsCostMultiplier float64) (float64, bool) {
+func kiroCreditsCost(result *ForwardResult) (float64, bool) {
 	if result == nil || result.Usage.UpstreamKiroCredits == nil {
 		return 0, false
 	}
@@ -9520,10 +9512,7 @@ func kiroCreditsCost(result *ForwardResult, kiroCreditsCostMultiplier float64) (
 	if credits < 0 {
 		credits = 0
 	}
-	if kiroCreditsCostMultiplier < 0 {
-		kiroCreditsCostMultiplier = 0
-	}
-	return credits * kiroCreditsCostMultiplier, true
+	return credits, true
 }
 
 // buildRecordUsageLog 构建使用日志并设置计费模式。
