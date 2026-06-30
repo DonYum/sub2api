@@ -487,6 +487,8 @@ type UsageLog struct {
 
 	// User-Agent
 	UserAgent *string `json:"user_agent"`
+	// IPAddress 用户请求源 IP，对该 usage 记录所属用户可见。
+	IPAddress *string `json:"ip_address,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
@@ -522,7 +524,7 @@ type AdminUsageLog struct {
 	// AccountStatsCost 自定义定价规则计算的账号统计费用（nil 表示使用默认公式）
 	AccountStatsCost *float64 `json:"account_stats_cost,omitempty"`
 
-	// IPAddress 用户请求 IP（仅管理员可见）
+	// IPAddress 用户请求 IP（保留在管理员 DTO 顶层，兼容现有管理端响应）
 	IPAddress *string `json:"ip_address,omitempty"`
 
 	// Account 最小账号信息（避免泄露敏感字段）

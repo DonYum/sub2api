@@ -214,6 +214,34 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
 }
 
+func TestUsageLogFromService_IncludesIPAddressForOwningUser(t *testing.T) {
+	t.Parallel()
+
+	ipAddress := "203.0.113.42"
+	accountRate := 1.5
+	log := &service.UsageLog{
+		RequestID:             "req_ip",
+		Model:                 "claude-opus-4-8",
+		IPAddress:             &ipAddress,
+		AccountRateMultiplier: &accountRate,
+		AccountStatsCost:      f64Ptr(0.123),
+		ModelMappingChain:     strPtr("a->b"),
+		BillingTier:           strPtr("priority"),
+	}
+
+	userDTO := UsageLogFromService(log)
+	require.NotNil(t, userDTO.IPAddress)
+	require.Equal(t, ipAddress, *userDTO.IPAddress)
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(userJSON), `"ip_address":"203.0.113.42"`)
+	require.NotContains(t, string(userJSON), "account_rate_multiplier")
+	require.NotContains(t, string(userJSON), "account_stats_cost")
+	require.NotContains(t, string(userJSON), "model_mapping_chain")
+	require.NotContains(t, string(userJSON), "billing_tier")
+}
+
 func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *testing.T) {
 	t.Parallel()
 
@@ -289,5 +317,9 @@ func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
 }
 
 func f64Ptr(value float64) *float64 {
+	return &value
+}
+
+func strPtr(value string) *string {
 	return &value
 }

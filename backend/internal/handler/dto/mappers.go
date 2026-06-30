@@ -574,7 +574,7 @@ func AccountSummaryFromService(a *service.Account) *AccountSummary {
 }
 
 func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
-	// 普通用户 DTO：严禁包含管理员字段（例如 account_rate_multiplier、ip_address、account）。
+	// 普通用户 DTO：源 IP 对本人可见；其它管理员字段（例如 account_rate_multiplier、account）仍不返回。
 	requestType := l.EffectiveRequestType()
 	stream, openAIWSMode := service.ApplyLegacyRequestFields(requestType, l.Stream, l.OpenAIWSMode)
 	requestedModel := l.RequestedModel
@@ -626,6 +626,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		ImageSizeBreakdown:       l.ImageSizeBreakdown,
 		MediaType:                l.MediaType,
 		UserAgent:                l.UserAgent,
+		IPAddress:                l.IPAddress,
 		CacheTTLOverridden:       l.CacheTTLOverridden,
 		BillingMode:              l.BillingMode,
 		CreatedAt:                l.CreatedAt,
@@ -725,7 +726,7 @@ func usageStringValue(value *string) string {
 }
 
 // UsageLogFromService converts a service UsageLog to DTO for regular users.
-// It excludes Account details and IP address - users should not see these.
+// It excludes Account details and other admin-only fields; source IP is visible to the owning user.
 func UsageLogFromService(l *service.UsageLog) *UsageLog {
 	if l == nil {
 		return nil
