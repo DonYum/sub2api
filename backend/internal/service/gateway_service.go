@@ -8403,6 +8403,16 @@ func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
 	return p.Cost.TotalCost > 0 && p.Account.IsAPIKeyOrBedrock() && p.Account.HasAnyQuotaLimit()
 }
 
+func applyAccountRateMultiplierToActualCost(cost *CostBreakdown, accountRateMultiplier float64) {
+	if cost == nil {
+		return
+	}
+	if accountRateMultiplier < 0 {
+		accountRateMultiplier = 1.0
+	}
+	cost.ActualCost *= accountRateMultiplier
+}
+
 // postUsageBilling is the legacy fallback billing path used when the unified
 // billing repo is unavailable (nil). Production uses applyUsageBilling → repo.Apply
 // for atomic billing. This path only runs in tests or degraded mode.
@@ -8954,6 +8964,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 创建使用日志
 	accountRateMultiplier := account.BillingRateMultiplier()
+	applyAccountRateMultiplierToActualCost(cost, accountRateMultiplier)
 	usageLog := s.buildRecordUsageLog(ctx, input, result, apiKey, user, account, subscription,
 		requestedModel, multiplier, imageMultiplier, accountRateMultiplier, billingType, cacheTTLOverridden, cost, opts)
 

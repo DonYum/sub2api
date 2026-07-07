@@ -338,6 +338,59 @@ func TestOpenAIGatewayServiceRecordUsage_UsesUserSpecificGroupRate(t *testing.T)
 	require.Equal(t, 1, userRepo.deductCalls)
 }
 
+func TestOpenAIGatewayServiceRecordUsage_AppliesAccountRateMultiplierToActualCost(t *testing.T) {
+	groupID := int64(11011)
+	groupRate := 1.0
+	accountRate := 0.25
+	usage := OpenAIUsage{InputTokens: 20, OutputTokens: 6, CacheReadInputTokens: 4}
+
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	subRepo := &openAIRecordUsageSubRepoStub{}
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
+	svc := newOpenAIRecordUsageServiceWithBillingRepoForTest(usageRepo, billingRepo, userRepo, subRepo, nil)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID: "resp_account_rate",
+			Usage:     usage,
+			Model:     "gpt-5.1",
+			Duration:  time.Second,
+		},
+		APIKey: &APIKey{
+			ID:      10011,
+			Quota:   100,
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:             groupID,
+				RateMultiplier: groupRate,
+			},
+		},
+		User: &User{ID: 20011},
+		Account: &Account{
+			ID:             30011,
+			Type:           AccountTypeAPIKey,
+			RateMultiplier: &accountRate,
+			Extra:          map[string]any{"quota_limit": 10.0},
+		},
+		APIKeyService: quotaSvc,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	require.Greater(t, usageRepo.lastLog.TotalCost, 0.0)
+	expectedActual := usageRepo.lastLog.TotalCost * accountRate
+	require.InDelta(t, expectedActual, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.AccountRateMultiplier)
+	require.InDelta(t, accountRate, *usageRepo.lastLog.AccountRateMultiplier, 1e-12)
+
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, expectedActual, billingRepo.lastCmd.BalanceCost, 1e-12)
+	require.InDelta(t, expectedActual, billingRepo.lastCmd.APIKeyQuotaCost, 1e-12)
+	require.InDelta(t, expectedActual, billingRepo.lastCmd.AccountQuotaCost, 1e-12)
+}
+
 func TestOpenAIGatewayServiceRecordUsage_IncludesEndpointMetadata(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	userRepo := &openAIRecordUsageUserRepoStub{}

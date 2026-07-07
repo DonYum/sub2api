@@ -233,6 +233,59 @@ func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersist
 	require.InDelta(t, 0.19, usageRepo.lastLog.ActualCost, 1e-12)
 }
 
+func TestGatewayServiceRecordUsage_AppliesAccountRateMultiplierToActualCost(t *testing.T) {
+	groupRate := 1.5
+	accountRate := 0.25
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	billingRepo := &openAIRecordUsageBillingRepoStub{result: &UsageBillingApplyResult{Applied: true}}
+	quotaSvc := &openAIRecordUsageAPIKeyQuotaStub{}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(
+		usageRepo,
+		billingRepo,
+		&openAIRecordUsageUserRepoStub{},
+		&openAIRecordUsageSubRepoStub{},
+	)
+
+	err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+		Result: &ForwardResult{
+			RequestID: "gateway_account_rate",
+			Usage: ClaudeUsage{
+				InputTokens:  20,
+				OutputTokens: 6,
+			},
+			Model:    "claude-sonnet-4",
+			Duration: time.Second,
+		},
+		APIKey: &APIKey{
+			ID:    509,
+			Quota: 100,
+			Group: &Group{RateMultiplier: groupRate},
+		},
+		User:          &User{ID: 609},
+		Account:       &Account{ID: 709, Type: AccountTypeAPIKey, RateMultiplier: &accountRate},
+		APIKeyService: quotaSvc,
+	})
+
+	require.NoError(t, err)
+	expected, err := svc.billingService.CalculateCost("claude-sonnet-4", UsageTokens{
+		InputTokens:  20,
+		OutputTokens: 6,
+	}, groupRate)
+	require.NoError(t, err)
+	expectedActual := expected.ActualCost * accountRate
+
+	require.NotNil(t, usageRepo.lastLog)
+	require.InDelta(t, expected.TotalCost, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, expectedActual, usageRepo.lastLog.ActualCost, 1e-12)
+	require.NotNil(t, usageRepo.lastLog.AccountRateMultiplier)
+	require.InDelta(t, accountRate, *usageRepo.lastLog.AccountRateMultiplier, 1e-12)
+
+	require.NotNil(t, billingRepo.lastCmd)
+	require.InDelta(t, expectedActual, billingRepo.lastCmd.BalanceCost, 1e-12)
+	require.InDelta(t, expectedActual, billingRepo.lastCmd.APIKeyQuotaCost, 1e-12)
+	require.InDelta(t, expected.TotalCost*accountRate, billingRepo.lastCmd.AccountQuotaCost, 1e-12)
+}
+
 func TestGatewayServiceRecordUsage_UsageLogWriteErrorDoesNotSkipBilling(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: false, err: MarkUsageLogCreateNotPersisted(context.Canceled)}
 	userRepo := &openAIRecordUsageUserRepoStub{}

@@ -5834,6 +5834,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// Create usage log
 	durationMs := int(result.Duration.Milliseconds())
 	accountRateMultiplier := account.BillingRateMultiplier()
+	applyAccountRateMultiplierToActualCost(cost, accountRateMultiplier)
 	requestID := resolveUsageBillingRequestID(ctx, result.RequestID)
 	if result.OpenAIWSMode {
 		if upstreamRequestID := strings.TrimSpace(result.RequestID); upstreamRequestID != "" {
