@@ -31,3 +31,22 @@ func TestNormalizeOpenAIPassthroughOAuthBody_CompactRemovesUnsupportedUser(t *te
 	require.False(t, gjson.GetBytes(normalized, "stream").Exists())
 	require.False(t, gjson.GetBytes(normalized, "store").Exists())
 }
+
+func TestStripOpenAIInputItemNamespaces_PreservesNestedAndToolNamespaces(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.6-sol",
+		"input":[
+			{"type":"message","namespace":"client-only","content":[{"type":"input_text","text":"hello","namespace":"nested-kept"}]},
+			{"type":"function_call","name":"lookup","namespace":"client-only","arguments":"{}"}
+		],
+		"tools":[{"type":"namespace","namespace":"functions","tools":[]}]
+	}`)
+
+	normalized, changed, err := stripOpenAIInputItemNamespaces(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(normalized, "input.0.namespace").Exists())
+	require.False(t, gjson.GetBytes(normalized, "input.1.namespace").Exists())
+	require.Equal(t, "nested-kept", gjson.GetBytes(normalized, "input.0.content.0.namespace").String())
+	require.Equal(t, "functions", gjson.GetBytes(normalized, "tools.0.namespace").String())
+}
