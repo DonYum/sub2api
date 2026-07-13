@@ -2385,6 +2385,16 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		return nil, errors.New("codex_cli_only restriction: only codex official clients are allowed")
 	}
 
+	if account.Type == AccountTypeOAuth {
+		normalizedBody, normalized, err := stripOpenAIInputItemNamespaces(body)
+		if err != nil {
+			return nil, err
+		}
+		if normalized {
+			body = normalizedBody
+		}
+	}
+
 	originalBody := body
 	requestView := newOpenAIRequestView(body)
 	reqModel, reqStream, promptCacheKey := requestView.Model, requestView.Stream, requestView.PromptCacheKey
@@ -6479,6 +6489,24 @@ func deleteOpenAIRequestMapPath(reqBody map[string]any, path string) {
 func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, promptCacheKey string) {
 	view := newOpenAIRequestView(body)
 	return view.Model, view.Stream, view.PromptCacheKey
+}
+
+func stripOpenAIInputItemNamespaces(body []byte) ([]byte, bool, error) {
+	normalized := body
+	changed := false
+	for index, item := range gjson.GetBytes(normalized, "input").Array() {
+		if !item.IsObject() || !item.Get("namespace").Exists() {
+			continue
+		}
+		path := fmt.Sprintf("input.%d.namespace", index)
+		next, err := sjson.DeleteBytes(normalized, path)
+		if err != nil {
+			return body, false, fmt.Errorf("normalize OpenAI body delete %s: %w", path, err)
+		}
+		normalized = next
+		changed = true
+	}
+	return normalized, changed, nil
 }
 
 // normalizeOpenAIPassthroughOAuthBody 将透传 OAuth 请求体收敛为旧链路关键行为：
