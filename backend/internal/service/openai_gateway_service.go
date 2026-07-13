@@ -3262,6 +3262,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
+	var firstOutputGuard *openAIFirstOutputGuard
+	if reqStream {
+		if timeout := s.openAIFirstOutputTimeout(); timeout > 0 {
+			upstreamCtx, firstOutputGuard = newOpenAIFirstOutputGuard(upstreamCtx, startTime, timeout)
+			defer firstOutputGuard.Close()
+		}
+	}
 	upstreamReq, err := s.buildUpstreamRequestOpenAIPassthrough(upstreamCtx, c, account, body, token)
 	releaseUpstreamCtx()
 	if err != nil {
@@ -3281,6 +3288,14 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	resp, err := s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
 	SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 	if err != nil {
+		if firstOutputGuard != nil && firstOutputGuard.timedOut.Load() {
+			message := fmt.Sprintf("OpenAI upstream timed out before first output after %s", firstOutputGuard.timeout)
+			recordOpenAIPassthroughTimeout(c, account, "", "first_output_timeout", message)
+			if s.rateLimitService != nil {
+				s.rateLimitService.HandleStreamTimeout(ctx, account, reqModel)
+			}
+			return nil, &OpenAIStreamTimeoutError{Message: message}
+		}
 		// Transport-level failure (proxy/DNS/TCP/TLS — no HTTP response). Convert to
 		// a failover so the handler switches to a healthy account, and temporarily
 		// unschedule the account on durable faults (e.g. rejected proxy credentials).
@@ -3665,6 +3680,88 @@ type openaiNonStreamingResultPassthrough struct {
 	imageOutputSizes []string
 }
 
+// OpenAIStreamTimeoutError is returned before any client output is written.
+// It is intentionally not an UpstreamFailoverError because response continuations
+// cannot safely move to another OpenAI account.
+type OpenAIStreamTimeoutError struct {
+	Message string
+}
+
+func (e *OpenAIStreamTimeoutError) Error() string {
+	if e == nil || strings.TrimSpace(e.Message) == "" {
+		return "OpenAI upstream timed out before first output"
+	}
+	return e.Message
+}
+
+type openAIFirstOutputGuardContextKey struct{}
+
+type openAIFirstOutputGuard struct {
+	timer    *time.Timer
+	timeout  time.Duration
+	timedOut atomic.Bool
+	done     chan struct{}
+	cancel   context.CancelFunc
+}
+
+func newOpenAIFirstOutputGuard(parent context.Context, startTime time.Time, timeout time.Duration) (context.Context, *openAIFirstOutputGuard) {
+	guardCtx, cancel := context.WithCancel(parent)
+	guard := &openAIFirstOutputGuard{timeout: timeout, done: make(chan struct{}), cancel: cancel}
+	remaining := timeout - time.Since(startTime)
+	if remaining < 0 {
+		remaining = 0
+	}
+	guard.timer = time.AfterFunc(remaining, func() {
+		guard.timedOut.Store(true)
+		close(guard.done)
+		cancel()
+	})
+	return context.WithValue(guardCtx, openAIFirstOutputGuardContextKey{}, guard), guard
+}
+
+func (g *openAIFirstOutputGuard) Stop() {
+	if g != nil && g.timer != nil {
+		g.timer.Stop()
+	}
+}
+
+func (g *openAIFirstOutputGuard) Close() {
+	if g == nil {
+		return
+	}
+	g.Stop()
+	g.cancel()
+}
+
+func openAIFirstOutputGuardFromResponse(resp *http.Response) *openAIFirstOutputGuard {
+	if resp == nil || resp.Request == nil {
+		return nil
+	}
+	guard, _ := resp.Request.Context().Value(openAIFirstOutputGuardContextKey{}).(*openAIFirstOutputGuard)
+	return guard
+}
+
+func (s *OpenAIGatewayService) openAIFirstOutputTimeout() time.Duration {
+	if s == nil || s.cfg == nil || s.cfg.Gateway.OpenAIFirstOutputTimeout <= 0 {
+		return 0
+	}
+	return time.Duration(s.cfg.Gateway.OpenAIFirstOutputTimeout) * time.Second
+}
+
+func recordOpenAIPassthroughTimeout(c *gin.Context, account *Account, upstreamRequestID, kind, message string) {
+	setOpsUpstreamError(c, http.StatusGatewayTimeout, message, "")
+	event := OpsUpstreamErrorEvent{
+		UpstreamStatusCode: http.StatusGatewayTimeout, UpstreamRequestID: upstreamRequestID,
+		Passthrough: true, Kind: kind, Message: message,
+	}
+	if account != nil {
+		event.Platform = account.Platform
+		event.AccountID = account.ID
+		event.AccountName = account.Name
+	}
+	appendOpsUpstreamError(c, event)
+}
+
 func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	if localStarted {
 		return true
@@ -3832,7 +3929,18 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	}
 	scanBuf := getSSEScannerBuf64K()
 	scanner.Buffer(scanBuf[:0], maxLineSize)
-	defer putSSEScannerBuf64K(scanBuf)
+
+	streamInterval := time.Duration(0)
+	firstOutputTimeout := time.Duration(0)
+	if s.cfg != nil {
+		if s.cfg.Gateway.StreamDataIntervalTimeout > 0 {
+			streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
+		}
+		if s.cfg.Gateway.OpenAIFirstOutputTimeout > 0 {
+			firstOutputTimeout = time.Duration(s.cfg.Gateway.OpenAIFirstOutputTimeout) * time.Second
+		}
+	}
+	firstOutputGuard := openAIFirstOutputGuardFromResponse(resp)
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
@@ -3845,8 +3953,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 	}
 
-	for scanner.Scan() {
-		line := scanner.Text()
+	processLine := func(line string) error {
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
 		if data, ok := extractOpenAISSEDataLine(line); ok {
@@ -3863,8 +3970,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
 				if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
-					return resultWithUsage(),
-						s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+					return s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -3890,11 +3996,11 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if !clientDisconnected {
 			if !clientOutputStarted && !lineStartsClientOutput {
 				pendingLines = append(pendingLines, line)
-				continue
+				return nil
 			}
 			if !clientOutputStarted && len(pendingLines) > 0 {
 				if !writePendingLines() {
-					continue
+					return nil
 				}
 			}
 			if _, err := fmt.Fprintln(w, line); err != nil {
@@ -3905,8 +4011,168 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				flusher.Flush()
 			}
 		}
+		return nil
 	}
-	if err := scanner.Err(); err != nil {
+
+	type passthroughScanEvent struct {
+		line string
+		err  error
+	}
+	events := make(chan passthroughScanEvent, 16)
+	done := make(chan struct{})
+	go func(scanBuf *sseScannerBuf64K) {
+		defer putSSEScannerBuf64K(scanBuf)
+		defer close(events)
+		for scanner.Scan() {
+			select {
+			case events <- passthroughScanEvent{line: scanner.Text()}:
+			case <-done:
+				return
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			select {
+			case events <- passthroughScanEvent{err: err}:
+			case <-done:
+			}
+		}
+	}(scanBuf)
+	defer close(done)
+
+	var firstOutputTimer *time.Timer
+	if firstOutputGuard == nil && firstOutputTimeout > 0 {
+		remaining := firstOutputTimeout - time.Since(startTime)
+		if remaining < 0 {
+			remaining = 0
+		}
+		firstOutputTimer = time.NewTimer(remaining)
+		defer firstOutputTimer.Stop()
+	}
+	var firstOutputCh <-chan time.Time
+	if firstOutputGuard != nil {
+		guardCh := make(chan time.Time, 1)
+		go func() {
+			select {
+			case <-firstOutputGuard.done:
+				guardCh <- time.Now()
+			case <-done:
+			}
+		}()
+		firstOutputCh = guardCh
+	} else if firstOutputTimer != nil {
+		firstOutputCh = firstOutputTimer.C
+	}
+
+	var intervalTimer *time.Timer
+	if streamInterval > 0 {
+		intervalTimer = time.NewTimer(streamInterval)
+		defer intervalTimer.Stop()
+	}
+	var intervalCh <-chan time.Time
+	if intervalTimer != nil {
+		intervalCh = intervalTimer.C
+	}
+	resetIntervalTimer := func() {
+		if intervalTimer == nil {
+			return
+		}
+		if !intervalTimer.Stop() {
+			select {
+			case <-intervalTimer.C:
+			default:
+			}
+		}
+		intervalTimer.Reset(streamInterval)
+	}
+	recordTimeout := func(kind, message string) {
+		recordOpenAIPassthroughTimeout(c, account, upstreamRequestID, kind, message)
+	}
+	writeTimeoutTerminal := func(message string) {
+		if clientDisconnected || !clientOutputStarted {
+			return
+		}
+		id := responseID
+		if id == "" {
+			id = "resp_timeout"
+		}
+		payload, err := json.Marshal(gin.H{
+			"type": "response.failed",
+			"response": gin.H{
+				"id": id, "object": "response", "model": originalModel,
+				"status": "failed", "output": []any{},
+				"error": gin.H{"code": "upstream_timeout", "message": message},
+			},
+		})
+		if err != nil {
+			return
+		}
+		if _, err := fmt.Fprintf(w, "event: response.failed\ndata: %s\n\n", payload); err != nil {
+			clientDisconnected = true
+			return
+		}
+		flusher.Flush()
+		sawTerminalEvent = true
+		sawFailedEvent = true
+		failedMessage = message
+	}
+
+	var scanErr error
+	for {
+		select {
+		case ev, ok := <-events:
+			if !ok {
+				goto scanComplete
+			}
+			if ev.err != nil {
+				scanErr = ev.err
+				goto scanComplete
+			}
+			resetIntervalTimer()
+			if err := processLine(ev.line); err != nil {
+				return resultWithUsage(), err
+			}
+			if firstTokenMs != nil && firstOutputCh != nil {
+				if firstOutputGuard != nil {
+					firstOutputGuard.Stop()
+				}
+				if firstOutputTimer != nil {
+					firstOutputTimer.Stop()
+				}
+				firstOutputCh = nil
+			}
+
+		case <-firstOutputCh:
+			message := fmt.Sprintf("OpenAI upstream timed out before first output after %s", firstOutputTimeout)
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] First output timeout: account=%d model=%s timeout=%s", account.ID, originalModel, firstOutputTimeout)
+			if s.rateLimitService != nil {
+				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+			}
+			recordTimeout("first_output_timeout", message)
+			return resultWithUsage(), &OpenAIStreamTimeoutError{Message: message}
+
+		case <-intervalCh:
+			message := fmt.Sprintf("OpenAI upstream stream idle for %s", streamInterval)
+			logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Stream data interval timeout: account=%d model=%s interval=%s", account.ID, originalModel, streamInterval)
+			if s.rateLimitService != nil {
+				s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
+			}
+			recordTimeout("stream_interval_timeout", message)
+			if !clientOutputStarted {
+				return resultWithUsage(), &OpenAIStreamTimeoutError{Message: message}
+			}
+			writeTimeoutTerminal(message)
+			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
+		}
+	}
+
+scanComplete:
+	if scanErr != nil {
+		err := scanErr
+		if firstOutputGuard != nil && firstOutputGuard.timedOut.Load() && firstTokenMs == nil {
+			message := fmt.Sprintf("OpenAI upstream timed out before first output after %s", firstOutputGuard.timeout)
+			recordTimeout("first_output_timeout", message)
+			return resultWithUsage(), &OpenAIStreamTimeoutError{Message: message}
+		}
 		if sawTerminalEvent && !sawFailedEvent {
 			return resultWithUsage(), nil
 		}

@@ -1633,6 +1633,123 @@ func TestOpenAIStreamingPassthroughMissingTerminalEventReturnsIncompleteError(t 
 	}
 }
 
+func TestOpenAIStreamingPassthroughFirstOutputTimeoutIgnoresPreamble(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		MaxLineSize:              defaultMaxLineSize,
+		OpenAIFirstOutputTimeout: 30,
+	}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{"X-Request-Id": []string{"rid-first-output-timeout"}}}
+	go func() {
+		_, _ = pw.Write([]byte("event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n"))
+	}()
+
+	startedAt := time.Now().Add(-30*time.Second + 50*time.Millisecond)
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Name: "acc"}, startedAt, "gpt-5.6-sol", "")
+	require.Error(t, err)
+	var timeoutErr *OpenAIStreamTimeoutError
+	require.ErrorAs(t, err, &timeoutErr)
+	require.Contains(t, err.Error(), "before first output")
+	require.NotNil(t, result)
+	require.Nil(t, result.firstTokenMs)
+	require.False(t, c.Writer.Written(), "preamble must remain buffered and must not defeat the hard deadline")
+	status, ok := c.Get(OpsUpstreamStatusCodeKey)
+	require.True(t, ok)
+	require.Equal(t, http.StatusGatewayTimeout, status)
+}
+
+func TestOpenAIFirstOutputGuardCancelsUpstreamHeaderWait(t *testing.T) {
+	guardCtx, guard := newOpenAIFirstOutputGuard(context.Background(), time.Now().Add(-30*time.Second+50*time.Millisecond), 30*time.Second)
+	defer guard.Close()
+
+	select {
+	case <-guardCtx.Done():
+		require.True(t, guard.timedOut.Load())
+		require.ErrorIs(t, guardCtx.Err(), context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("first-output guard did not cancel the upstream request context")
+	}
+}
+
+func TestOpenAIFirstOutputGuardStopKeepsUpstreamAlive(t *testing.T) {
+	guardCtx, guard := newOpenAIFirstOutputGuard(context.Background(), time.Now().Add(-29*time.Second), 30*time.Second)
+	guard.Stop()
+	defer guard.Close()
+
+	select {
+	case <-guardCtx.Done():
+		t.Fatal("stopping the first-output guard must not cancel an active stream")
+	case <-time.After(150 * time.Millisecond):
+	}
+	require.False(t, guard.timedOut.Load())
+}
+
+func TestOpenAIStreamingPassthroughOutputDisarmsFirstOutputTimeout(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		MaxLineSize:              defaultMaxLineSize,
+		OpenAIFirstOutputTimeout: 30,
+	}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			"event: response.created",
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			"event: response.output_text.delta",
+			`data: {"type":"response.output_text.delta","delta":"ok"}`,
+			"",
+			"event: response.completed",
+			`data: {"type":"response.completed","response":{"id":"resp_1","usage":{"input_tokens":1,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{},
+	}
+
+	startedAt := time.Now().Add(-30*time.Second + 50*time.Millisecond)
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, startedAt, "gpt-5.6-sol", "")
+	require.NoError(t, err)
+	require.NotNil(t, result.firstTokenMs)
+	require.Contains(t, rec.Body.String(), "response.output_text.delta")
+}
+
+func TestOpenAIStreamingPassthroughIntervalTimeoutWritesTerminalAfterOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		MaxLineSize:               defaultMaxLineSize,
+		StreamDataIntervalTimeout: 1,
+	}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	pr, pw := io.Pipe()
+	defer pr.Close()
+	defer pw.Close()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{}}
+	go func() {
+		_, _ = pw.Write([]byte("event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"))
+	}()
+
+	result, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 1}, time.Now(), "gpt-5.6-sol", "")
+	require.ErrorContains(t, err, "stream data interval timeout")
+	require.NotNil(t, result.firstTokenMs)
+	require.Contains(t, rec.Body.String(), "event: response.failed")
+	require.Contains(t, rec.Body.String(), "upstream_timeout")
+}
+
 func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	cfg := &config.Config{
