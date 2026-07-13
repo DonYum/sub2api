@@ -442,6 +442,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					zap.Error(err),
 				)
 			} else {
+				var streamTimeoutErr *service.OpenAIStreamTimeoutError
+				if errors.As(err, &streamTimeoutErr) {
+					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
+					h.handleStreamingAwareError(c, http.StatusGatewayTimeout, "upstream_timeout", streamTimeoutErr.Error(), streamStarted)
+					return
+				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if c.Writer.Size() != writerSizeBeforeForward {
