@@ -1908,6 +1908,167 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceTopKFallback
 	}
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalancePrefersHighestPriorityLayer(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10111)
+	accounts := []Account{
+		{
+			ID:          3101,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 2,
+			Priority:    1,
+		},
+		{
+			ID:          3102,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 2,
+			Priority:    1,
+		},
+		{
+			ID:          3103,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 2,
+			Priority:    2,
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 3
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 1
+
+	concurrencyCache := schedulerTestConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			3101: {AccountID: 3101, LoadRate: 90, WaitingCount: 5},
+			3102: {AccountID: 3102, LoadRate: 80, WaitingCount: 4},
+			3103: {AccountID: 3103, LoadRate: 0, WaitingCount: 0},
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	for i := 0; i < 30; i++ {
+		selection, decision, err := svc.SelectAccountWithScheduler(
+			ctx,
+			&groupID,
+			"",
+			fmt.Sprintf("session_hash_priority_%d", i),
+			"gpt-5.1",
+			nil,
+			OpenAIUpstreamTransportAny,
+			false,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, selection)
+		require.NotNil(t, selection.Account)
+		require.NotEqual(t, int64(3103), selection.Account.ID, "lower priority account must not receive new load while higher priority accounts have slots")
+		require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+		if selection.ReleaseFunc != nil {
+			selection.ReleaseFunc()
+		}
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountWithScheduler_LoadBalanceFallsBackWhenHigherPriorityHasNoSlot(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10112)
+	accounts := []Account{
+		{
+			ID:          3201,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+		},
+		{
+			ID:          3202,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    1,
+		},
+		{
+			ID:          3203,
+			Platform:    PlatformOpenAI,
+			Type:        AccountTypeAPIKey,
+			Status:      StatusActive,
+			Schedulable: true,
+			Concurrency: 1,
+			Priority:    2,
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIWS.LBTopK = 3
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Priority = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Load = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.Queue = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 1
+	cfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 1
+
+	concurrencyCache := schedulerTestConcurrencyCache{
+		loadMap: map[int64]*AccountLoadInfo{
+			3201: {AccountID: 3201, LoadRate: 0, WaitingCount: 0},
+			3202: {AccountID: 3202, LoadRate: 0, WaitingCount: 0},
+			3203: {AccountID: 3203, LoadRate: 0, WaitingCount: 0},
+		},
+		acquireResults: map[int64]bool{
+			3201: false,
+			3202: false,
+			3203: true,
+		},
+	}
+
+	svc := &OpenAIGatewayService{
+		accountRepo:        schedulerTestOpenAIAccountRepo{accounts: accounts},
+		cache:              &schedulerTestGatewayCache{sessionBindings: map[string]int64{}},
+		cfg:                cfg,
+		rateLimitService:   newOpenAIAdvancedSchedulerRateLimitService("true"),
+		concurrencyService: NewConcurrencyService(concurrencyCache),
+	}
+
+	selection, decision, err := svc.SelectAccountWithScheduler(
+		ctx,
+		&groupID,
+		"",
+		"session_hash_priority_fallback",
+		"gpt-5.1",
+		nil,
+		OpenAIUpstreamTransportAny,
+		false,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.NotNil(t, selection.Account)
+	require.Equal(t, int64(3203), selection.Account.ID)
+	require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 // Regression: TopK initial filter must drop quota-auto-paused accounts. Otherwise
 // the candidate pool is filled with paused accounts, healthy accounts fall outside
 // TopK, and the scheduler returns "no available accounts" even though healthy ones
