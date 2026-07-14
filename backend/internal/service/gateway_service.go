@@ -1848,6 +1848,29 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 
 		if len(routingCandidates) > 0 {
+			// 先计算模型路由候选的当前负载，用于同时约束 sticky 和后续选择。
+			// sticky 只能在其所属优先级层是当前最高可用层时提前命中；
+			// 否则低优 sticky 会绕过“高优有槽先打高优”的语义。
+			routingLoads := make([]AccountWithConcurrency, 0, len(routingCandidates))
+			for _, acc := range routingCandidates {
+				routingLoads = append(routingLoads, AccountWithConcurrency{
+					ID:             acc.ID,
+					MaxConcurrency: acc.EffectiveLoadFactor(),
+				})
+			}
+			routingLoadMap, _ := s.concurrencyService.GetAccountsLoadBatch(ctx, routingLoads)
+
+			var routingAvailable []accountWithLoad
+			for _, acc := range routingCandidates {
+				loadInfo := routingLoadMap[acc.ID]
+				if loadInfo == nil {
+					loadInfo = &AccountLoadInfo{AccountID: acc.ID}
+				}
+				if loadInfo.LoadRate < 100 {
+					routingAvailable = append(routingAvailable, accountWithLoad{account: acc, loadInfo: loadInfo})
+				}
+			}
+
 			// 1.5. 在路由账号范围内检查粘性会话
 			if sessionHash != "" && stickyAccountID > 0 {
 				slog.Debug("sticky.layer1_5_checking",
@@ -1870,6 +1893,11 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
 
 						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
+
+						if rpmPass && !routedStickyIsInHighestAvailablePriority(stickyAccount, routingAvailable) {
+							stickyCacheMissReason = "lower_priority_available"
+							rpmPass = false
+						}
 
 						if rpmPass { // 粘性会话窗口费用+RPM 检查
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
@@ -1936,28 +1964,6 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=account_cleared account_id=%d session=%s current_rpm=0 base_rpm=0",
 							stickyAccountID, shortSessionHash(sessionHash))
 					}
-				}
-			}
-
-			// 2. 批量获取负载信息
-			routingLoads := make([]AccountWithConcurrency, 0, len(routingCandidates))
-			for _, acc := range routingCandidates {
-				routingLoads = append(routingLoads, AccountWithConcurrency{
-					ID:             acc.ID,
-					MaxConcurrency: acc.EffectiveLoadFactor(),
-				})
-			}
-			routingLoadMap, _ := s.concurrencyService.GetAccountsLoadBatch(ctx, routingLoads)
-
-			// 3. 按负载感知排序
-			var routingAvailable []accountWithLoad
-			for _, acc := range routingCandidates {
-				loadInfo := routingLoadMap[acc.ID]
-				if loadInfo == nil {
-					loadInfo = &AccountLoadInfo{AccountID: acc.ID}
-				}
-				if loadInfo.LoadRate < 100 {
-					routingAvailable = append(routingAvailable, accountWithLoad{account: acc, loadInfo: loadInfo})
 				}
 			}
 
@@ -2968,6 +2974,19 @@ func filterByMinPriority(accounts []accountWithLoad) []accountWithLoad {
 		}
 	}
 	return result
+}
+
+func routedStickyIsInHighestAvailablePriority(stickyAccount *Account, available []accountWithLoad) bool {
+	if stickyAccount == nil || len(available) == 0 {
+		return false
+	}
+	minPriority := available[0].account.Priority
+	for _, acc := range available[1:] {
+		if acc.account.Priority < minPriority {
+			minPriority = acc.account.Priority
+		}
+	}
+	return stickyAccount.Priority <= minPriority
 }
 
 // filterByMinLoadRate 过滤出负载率最低的账号集合

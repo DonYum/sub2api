@@ -388,6 +388,14 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		_ = s.service.deleteStickySessionAccountID(ctx, req.GroupID, sessionHash)
 		return nil, 0, nil
 	}
+	if !s.sessionStickyIsInHighestAvailablePriority(ctx, req, account) {
+		slog.Info("sticky_session_lower_priority_available",
+			"account_id", accountID,
+			"priority", account.Priority,
+			"session", shortSessionHash(sessionHash),
+		)
+		return nil, 0, nil
+	}
 	escapeCfg := s.service.openAIStickyEscapeConfig()
 	if reason, errorRate, ttft, shouldEscape := s.shouldEscapeStickyAccount(accountID, escapeCfg); shouldEscape {
 		slog.Info("sticky_escape_triggered",
@@ -432,6 +440,83 @@ func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 		}, 0, nil
 	}
 	return nil, 0, nil
+}
+
+func (s *defaultOpenAIAccountScheduler) sessionStickyIsInHighestAvailablePriority(ctx context.Context, req OpenAIAccountScheduleRequest, stickyAccount *Account) bool {
+	if s == nil || s.service == nil || stickyAccount == nil {
+		return false
+	}
+
+	accounts, err := s.service.listSchedulableAccounts(ctx, req.GroupID, req.Platform)
+	if err != nil || len(accounts) == 0 {
+		return true
+	}
+
+	var schedGroup *Group
+	if req.GroupID != nil && s.service.schedulerSnapshot != nil {
+		schedGroup, _ = s.service.schedulerSnapshot.GetGroupByID(ctx, *req.GroupID)
+	}
+
+	candidates := make([]*Account, 0, len(accounts))
+	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
+	for i := range accounts {
+		account := &accounts[i]
+		if req.ExcludedIDs != nil {
+			if _, excluded := req.ExcludedIDs[account.ID]; excluded {
+				continue
+			}
+		}
+		if !account.IsSchedulable() || account.Platform != normalizeOpenAICompatiblePlatform(req.Platform) || !account.IsOpenAICompatible() {
+			continue
+		}
+		if s.service.isOpenAIAccountRuntimeBlocked(account) {
+			continue
+		}
+		if schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet() {
+			continue
+		}
+		if !s.isAccountRequestCompatible(ctx, account, req) {
+			continue
+		}
+		if !s.isAccountTransportCompatible(account, req.RequiredTransport) {
+			continue
+		}
+		if req.RequireCompact && openAICompactSupportTier(account) == 0 {
+			continue
+		}
+		candidates = append(candidates, account)
+		loadReq = append(loadReq, AccountWithConcurrency{
+			ID:             account.ID,
+			MaxConcurrency: account.EffectiveLoadFactor(),
+		})
+	}
+	if len(candidates) == 0 {
+		return true
+	}
+
+	loadMap := map[int64]*AccountLoadInfo{}
+	if s.service.concurrencyService != nil {
+		if batchLoad, loadErr := s.service.concurrencyService.GetAccountsLoadBatch(ctx, loadReq); loadErr == nil {
+			loadMap = batchLoad
+		}
+	}
+
+	minPriority := 0
+	foundAvailable := false
+	for _, candidate := range candidates {
+		loadInfo := loadMap[candidate.ID]
+		if loadInfo != nil && loadInfo.LoadRate >= 100 {
+			continue
+		}
+		if !foundAvailable || candidate.Priority < minPriority {
+			minPriority = candidate.Priority
+			foundAvailable = true
+		}
+	}
+	if !foundAvailable {
+		return true
+	}
+	return stickyAccount.Priority <= minPriority
 }
 
 func withOpenAIExcludedAccount(excluded map[int64]struct{}, accountID int64) map[int64]struct{} {

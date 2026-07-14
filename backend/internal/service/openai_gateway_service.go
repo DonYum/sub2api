@@ -2079,6 +2079,22 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
+					} else if !(&defaultOpenAIAccountScheduler{service: s, stats: s.openaiAccountStats}).sessionStickyIsInHighestAvailablePriority(ctx, OpenAIAccountScheduleRequest{
+						GroupID:            groupID,
+						Platform:           platform,
+						SessionHash:        sessionHash,
+						StickyAccountID:    stickyAccountID,
+						RequestedModel:     requestedModel,
+						RequiredTransport:  OpenAIUpstreamTransportAny,
+						RequiredCapability: requiredCapability,
+						RequireCompact:     requireCompact,
+						ExcludedIDs:        excludedIDs,
+					}, account) {
+						slog.Info("sticky_session_lower_priority_available",
+							"account_id", accountID,
+							"priority", account.Priority,
+							"session", shortSessionHash(sessionHash),
+						)
 					} else {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {
