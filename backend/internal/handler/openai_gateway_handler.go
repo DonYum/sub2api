@@ -336,6 +336,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
+	var failoverPriorityFloor *int
 
 	for {
 		// Select account supporting the requested model
@@ -398,6 +399,21 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			zap.Float64("load_skew", scheduleDecision.LoadSkew),
 		)
 		account := selection.Account
+		if shouldStopOpenAIHTTPFailoverAtLowerPriority(failoverPriorityFloor, account) {
+			releaseOpenAISelectionIfAcquired(selection)
+			reqLog.Warn("openai.failover_lower_priority_blocked",
+				zap.Int64("account_id", account.ID),
+				zap.Int("account_priority", account.Priority),
+				zap.Intp("failover_priority_floor", failoverPriorityFloor),
+				zap.Int("excluded_account_count", len(failedAccountIDs)),
+			)
+			if lastFailoverErr != nil {
+				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+			} else {
+				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
+			}
+			return
+		}
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -476,6 +492,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
+					failoverPriorityFloor = updateOpenAIFailoverPriorityFloor(failoverPriorityFloor, account)
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
@@ -1179,6 +1196,27 @@ func (h *OpenAIGatewayHandler) acquireResponsesAccountSlot(
 		reqLog.Warn("openai.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 	}
 	return wrapReleaseOnDone(ctx, accountReleaseFunc), true
+}
+
+func shouldStopOpenAIHTTPFailoverAtLowerPriority(priorityFloor *int, account *service.Account) bool {
+	return priorityFloor != nil && account != nil && account.Priority > *priorityFloor
+}
+
+func updateOpenAIFailoverPriorityFloor(priorityFloor *int, failedAccount *service.Account) *int {
+	if failedAccount == nil {
+		return priorityFloor
+	}
+	if priorityFloor == nil || failedAccount.Priority < *priorityFloor {
+		priority := failedAccount.Priority
+		return &priority
+	}
+	return priorityFloor
+}
+
+func releaseOpenAISelectionIfAcquired(selection *service.AccountSelectionResult) {
+	if selection != nil && selection.Acquired && selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
 }
 
 // ResponsesWebSocket handles OpenAI Responses API WebSocket ingress endpoint

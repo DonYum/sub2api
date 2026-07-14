@@ -24,6 +24,38 @@ import (
 	"github.com/tidwall/sjson"
 )
 
+func TestOpenAIHTTPFailoverPriorityFloor(t *testing.T) {
+	highPriority := &service.Account{ID: 26, Priority: 1}
+	samePriority := &service.Account{ID: 30, Priority: 1}
+	lowerPriority := &service.Account{ID: 22, Priority: 4}
+
+	floor := updateOpenAIFailoverPriorityFloor(nil, highPriority)
+	require.NotNil(t, floor)
+	assert.Equal(t, 1, *floor)
+	assert.False(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(floor, samePriority))
+	assert.True(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(floor, lowerPriority))
+
+	floor = updateOpenAIFailoverPriorityFloor(floor, lowerPriority)
+	require.NotNil(t, floor)
+	assert.Equal(t, 1, *floor, "lower-priority failures must not relax the failover floor")
+}
+
+func TestReleaseOpenAISelectionIfAcquired(t *testing.T) {
+	released := false
+	releaseOpenAISelectionIfAcquired(&service.AccountSelectionResult{
+		Acquired:    true,
+		ReleaseFunc: func() { released = true },
+	})
+	assert.True(t, released)
+
+	released = false
+	releaseOpenAISelectionIfAcquired(&service.AccountSelectionResult{
+		Acquired:    false,
+		ReleaseFunc: func() { released = true },
+	})
+	assert.False(t, released)
+}
+
 func TestOpenAIHandleStreamingAwareError_JSONEscaping(t *testing.T) {
 	tests := []struct {
 		name    string
