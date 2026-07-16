@@ -54,6 +54,11 @@ server:
     # 每个流的最大上传缓冲区（字节，默认 512KB）
     max_upload_buffer_per_stream: 524288
 
+# Prometheus application metrics are served on a separate loopback-only listener.
+metrics:
+  enabled: false
+  listen_addr: "127.0.0.1:19090"
+
 # =============================================================================
 # Run Mode Configuration
 # 运行模式配置

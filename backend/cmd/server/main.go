@@ -16,6 +16,7 @@ import (
 	"time"
 
 	_ "github.com/Wei-Shaw/sub2api/ent/runtime"
+	"github.com/Wei-Shaw/sub2api/internal/appmetrics"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -154,6 +155,25 @@ func runMainServer() {
 	}
 	defer app.Cleanup()
 
+	var metricsServer *http.Server
+	if cfg.Metrics.Enabled {
+		appmetrics.Enable()
+		metricsMux := http.NewServeMux()
+		metricsMux.Handle("/metrics", appmetrics.Handler())
+		metricsServer = &http.Server{
+			Addr:              cfg.Metrics.ListenAddr,
+			Handler:           metricsMux,
+			ReadHeaderTimeout: 5 * time.Second,
+			IdleTimeout:       30 * time.Second,
+		}
+		go func() {
+			if err := metricsServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("Metrics server failed: %v", err)
+			}
+		}()
+		log.Printf("Metrics server started on %s", metricsServer.Addr)
+	}
+
 	// 启动服务器
 	go func() {
 		if err := app.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -172,6 +192,11 @@ func runMainServer() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+	if metricsServer != nil {
+		if err := metricsServer.Shutdown(ctx); err != nil {
+			log.Printf("Metrics server forced to shutdown: %v", err)
+		}
+	}
 
 	if err := app.Server.Shutdown(ctx); err != nil {
 		log.Fatalf("Server forced to shutdown: %v", err)

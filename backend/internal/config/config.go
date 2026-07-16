@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"strings"
@@ -60,6 +61,7 @@ const DefaultUpstreamResponseReadMaxBytes int64 = 128 * 1024 * 1024
 
 type Config struct {
 	Server                  ServerConfig                  `mapstructure:"server"`
+	Metrics                 MetricsConfig                 `mapstructure:"metrics"`
 	Log                     LogConfig                     `mapstructure:"log"`
 	CORS                    CORSConfig                    `mapstructure:"cors"`
 	Security                SecurityConfig                `mapstructure:"security"`
@@ -556,6 +558,11 @@ type ServerConfig struct {
 	TrustedProxies     []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
 	MaxRequestBodySize int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
 	H2C                H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
+}
+
+type MetricsConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	ListenAddr string `mapstructure:"listen_addr"`
 }
 
 // H2CConfig HTTP/2 Cleartext 配置
@@ -1718,6 +1725,8 @@ func setDefaults() {
 	viper.SetDefault("database.user_platform_quota_flusher_enabled", false)
 	viper.SetDefault("database.user_platform_quota_flush_interval_ms", 2000)
 	viper.SetDefault("database.user_platform_quota_flush_batch_size", 1000)
+	viper.SetDefault("metrics.enabled", false)
+	viper.SetDefault("metrics.listen_addr", "127.0.0.1:19090")
 
 	// Redis
 	viper.SetDefault("redis.host", "localhost")
@@ -2030,6 +2039,9 @@ func (c *Config) Validate() error {
 	}
 	if !c.Log.Output.ToStdout && !c.Log.Output.ToFile {
 		return fmt.Errorf("log.output.to_stdout and log.output.to_file cannot both be false")
+	}
+	if err := validateMetricsConfig(c.Metrics); err != nil {
+		return err
 	}
 	if c.Log.Rotation.MaxSizeMB <= 0 {
 		return fmt.Errorf("log.rotation.max_size_mb must be positive")
@@ -2845,6 +2857,25 @@ func (c *Config) Validate() error {
 	}
 	if err := ValidateDingTalkConfig(c.DingTalk); err != nil {
 		return fmt.Errorf("dingtalk_connect: %w", err)
+	}
+	return nil
+}
+
+func validateMetricsConfig(cfg MetricsConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	addr := strings.TrimSpace(cfg.ListenAddr)
+	if addr == "" {
+		return fmt.Errorf("metrics.listen_addr is required when metrics.enabled=true")
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("metrics.listen_addr must be a valid host:port: %w", err)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("metrics.listen_addr must use a loopback IP")
 	}
 	return nil
 }

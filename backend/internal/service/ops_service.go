@@ -151,6 +151,7 @@ func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogIn
 		log.Printf("[Ops] RecordError failed: %v", err)
 		return err
 	}
+	recordErrorAppMetrics(prepared)
 	return nil
 }
 
@@ -176,6 +177,8 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 		_, err := s.opsRepo.InsertErrorLog(ctx, prepared[0])
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch single insert failed: %v", err)
+		} else {
+			recordErrorAppMetrics(prepared[0])
 		}
 		return err
 	}
@@ -189,9 +192,14 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 				if firstErr == nil {
 					firstErr = insertErr
 				}
+			} else {
+				recordErrorAppMetrics(entry)
 			}
 		}
 		return firstErr
+	}
+	for _, entry := range prepared {
+		recordErrorAppMetrics(entry)
 	}
 	return nil
 }
