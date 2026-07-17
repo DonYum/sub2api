@@ -521,6 +521,27 @@ Additional security-related options are available in `config.yaml`:
 - `server.trusted_proxies` to enable X-Forwarded-For parsing
 - `turnstile.required` to require Turnstile in release mode
 
+#### OpenAI Responses First-Output Timeout And Failover Policy
+
+`gateway.openai_first_output_timeout` limits how long an OpenAI Responses stream may wait for its first model output, in seconds. The default is `300`; `0` disables the timeout, and non-zero values must be between `30` and `1800`. Deployments whose clients give up sooner than the default should configure an explicit safety timeout, for example:
+
+```yaml
+gateway:
+  openai_first_output_timeout: 180
+```
+
+This setting turns a request that produces no output for too long into an observable, retryable gateway failure. It prevents the misleading case where the client disconnects first while the upstream continues and later appears successful in server-side records. In one production incident, the client disconnected at about `221s`, while the upstream did not finish until about `250s`; the old `300s` default therefore fired too late. After selecting a shorter value such as `180s`, monitor first-output timeouts, client cancellations, final 5xx responses, and the TTFT distribution to ensure legitimate slow-reasoning requests are not harmed. In one roughly `15h` post-deployment observation window, the `180s` timeout triggered `0` times and the historical roughly `220s` disconnect did not recur. The current recommendation is therefore to keep the safety timeout without adding account failover for a timeout that is not occurring.
+
+A first-output timeout currently **does not automatically retry on another account**. This is intentional: a Responses continuation may carry `previous_response_id`, and the client may already have received output. Blind failover can break session affinity and cause duplicate output or billing. Reconsider automatic failover only when all of these conditions hold:
+
+- reproducible `first_output_timeout` events exist, distinct from client cancellation or mid-stream data timeout;
+- no model output has been sent to the client;
+- the request has no `previous_response_id` and is not a continuation;
+- replay has explicit idempotency and billing-deduplication guarantees;
+- monitoring can distinguish the original account failure, failover result, and final client-visible status.
+
+If the observation window contains no first-output timeouts and the historical disconnect does not recur, keep the safety timeout in place instead of changing scheduling for a failure that is not occurring. Revisit failover only after monitoring captures real samples and the account-pool, TTFT-tail, and failure-rate evidence justify it.
+
 **⚠️ Security Warning: HTTP URL Configuration**
 
 When `security.url_allowlist.enabled=false`, the system performs minimal URL validation by default, **rejecting HTTP URLs** and only allowing HTTPS. To allow HTTP URLs (e.g., for development or internal testing), you must explicitly set:
