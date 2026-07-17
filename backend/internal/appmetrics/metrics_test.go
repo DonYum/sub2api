@@ -77,3 +77,25 @@ func TestMetricsHandlerExposesPrometheusText(t *testing.T) {
 	require.Contains(t, recorder.Header().Get("Content-Type"), "text/plain")
 	require.Contains(t, recorder.Body.String(), `sub2api_requests_total{endpoint="messages",outcome="success",platform="anthropic",request_type="sync",status_code="200"} 1`)
 }
+
+func TestMetricsTracksInflightRequestsByPlatform(t *testing.T) {
+	m := New()
+	done := m.BeginInFlight("openai")
+	doneAnthropic := m.BeginInFlight("anthropic")
+
+	if got := testutil.ToFloat64(m.inflightRequests.WithLabelValues("openai")); got != 1 {
+		t.Fatalf("openai inflight = %v, want 1", got)
+	}
+	if got := testutil.ToFloat64(m.inflightRequests.WithLabelValues("anthropic")); got != 1 {
+		t.Fatalf("anthropic inflight = %v, want 1", got)
+	}
+
+	done()
+	doneAnthropic()
+	if got := testutil.ToFloat64(m.inflightRequests.WithLabelValues("openai")); got != 0 {
+		t.Fatalf("openai inflight after completion = %v, want 0", got)
+	}
+	if got := testutil.ToFloat64(m.inflightRequests.WithLabelValues("anthropic")); got != 0 {
+		t.Fatalf("anthropic inflight after completion = %v, want 0", got)
+	}
+}

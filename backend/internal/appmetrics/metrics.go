@@ -39,6 +39,7 @@ type Metrics struct {
 	streamTerminations *prometheus.CounterVec
 	requestDuration    *prometheus.HistogramVec
 	firstOutput        *prometheus.HistogramVec
+	inflightRequests   *prometheus.GaugeVec
 }
 
 func New() *Metrics {
@@ -66,6 +67,10 @@ func New() *Metrics {
 			Help:    "Time to first model output for successfully accounted gateway requests.",
 			Buckets: []float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 180, 300},
 		}, []string{"platform", "endpoint"}),
+		inflightRequests: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "sub2api_inflight_requests",
+			Help: "Current gateway requests still in progress by platform.",
+		}, []string{"platform"}),
 	}
 	m.registry.MustRegister(
 		prometheus.NewGoCollector(),
@@ -75,6 +80,7 @@ func New() *Metrics {
 		m.streamTerminations,
 		m.requestDuration,
 		m.firstOutput,
+		m.inflightRequests,
 	)
 	return m
 }
@@ -106,6 +112,23 @@ func RecordError(obs ErrorObservation) {
 		return
 	}
 	defaultMetrics.RecordError(obs)
+}
+
+// BeginInFlight records a request that remains active until the returned function is called.
+func BeginInFlight(platform string) func() {
+	if !defaultEnabled.Load() {
+		return func() {}
+	}
+	return defaultMetrics.BeginInFlight(platform)
+}
+
+func (m *Metrics) BeginInFlight(platform string) func() {
+	if m == nil {
+		return func() {}
+	}
+	metric := m.inflightRequests.WithLabelValues(normalizePlatform(platform))
+	metric.Inc()
+	return metric.Dec
 }
 
 func (m *Metrics) RecordUsage(obs UsageObservation) {
