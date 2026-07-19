@@ -193,6 +193,61 @@ func TestGatewayServiceRecordUsage_PreservesRequestedAndUpstreamModels(t *testin
 	require.Equal(t, mappedModel, *usageRepo.lastLog.UpstreamModel)
 }
 
+func TestGatewayServiceRecordUsage_UpstreamBillingSourceUsesUpstreamModel(t *testing.T) {
+	tests := []struct {
+		name               string
+		requested          string
+		upstream           string
+		wantUpstream       string
+		wantStoredUpstream bool
+	}{
+		{name: "mapped alias", requested: "claude-opus-alias", upstream: "k3", wantUpstream: "k3", wantStoredUpstream: true},
+		{name: "direct upstream model", requested: "k3"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			groupID := int64(901)
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+			svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, groupID, "k3")
+
+			err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+				Result: &ForwardResult{
+					RequestID:     "gateway_upstream_billing_model",
+					Usage:         ClaudeUsage{InputTokens: 1_000_000, OutputTokens: 100_000},
+					Model:         tt.requested,
+					UpstreamModel: tt.upstream,
+					Duration:      time.Second,
+				},
+				APIKey: &APIKey{
+					ID:      501,
+					Quota:   100,
+					GroupID: i64p(groupID),
+					Group:   &Group{ID: groupID, RateMultiplier: 1},
+				},
+				User:    &User{ID: 601},
+				Account: &Account{ID: 701},
+				ChannelUsageFields: ChannelUsageFields{
+					OriginalModel:      tt.requested,
+					BillingModelSource: BillingModelSourceUpstream,
+				},
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.InDelta(t, 4.5, usageRepo.lastLog.TotalCost, 1e-12)
+			require.Equal(t, tt.requested, usageRepo.lastLog.RequestedModel)
+			if tt.wantStoredUpstream {
+				require.NotNil(t, usageRepo.lastLog.UpstreamModel)
+				require.Equal(t, tt.wantUpstream, *usageRepo.lastLog.UpstreamModel)
+			} else {
+				require.Nil(t, usageRepo.lastLog.UpstreamModel)
+			}
+		})
+	}
+}
+
 func TestGatewayServiceRecordUsage_EmptyImageSizeDefaultsBeforeBillingAndPersistence(t *testing.T) {
 	imagePrice2K := 0.19
 	groupID := int64(901)

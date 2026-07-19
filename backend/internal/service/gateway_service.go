@@ -9655,11 +9655,19 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	// 确定计费模型
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
-	if input.BillingModelSource == BillingModelSourceChannelMapped && input.ChannelMappedModel != "" {
-		billingModel = input.ChannelMappedModel
-	}
-	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
-		billingModel = input.OriginalModel
+	switch input.BillingModelSource {
+	case BillingModelSourceUpstream:
+		if result.UpstreamModel != "" {
+			billingModel = result.UpstreamModel
+		}
+	case BillingModelSourceChannelMapped:
+		if input.ChannelMappedModel != "" {
+			billingModel = input.ChannelMappedModel
+		}
+	case BillingModelSourceRequested:
+		if input.OriginalModel != "" {
+			billingModel = input.OriginalModel
+		}
 	}
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
