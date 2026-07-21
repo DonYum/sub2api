@@ -22,7 +22,7 @@ describe('UseKeyModal', () => {
       props: {
         show: true,
         apiKey: 'sk-test',
-        baseUrl: 'https://example.com/v1',
+        baseUrl: 'https://tianshu-64.base.trustbe.cn',
         platform: 'openai'
       },
       global: {
@@ -38,11 +38,16 @@ describe('UseKeyModal', () => {
     })
 
     const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
-    const configToml = codeBlocks.find((content) => content.includes('model_provider = "OpenAI"'))
+    const configToml = codeBlocks.find((content) => content.includes('model_provider = "BEE64"'))
 
     expect(configToml).toBeDefined()
+    expect(configToml).toContain('[model_providers.BEE64]')
+    expect(configToml).toContain('name = "BEE64"')
+    expect(configToml).toContain('base_url = "https://tianshu-64.base.trustbe.cn"')
     expect(configToml).toContain('model = "gpt-5.5"')
     expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('model_reasoning_effort = "high"')
+    expect(configToml).not.toContain('model_reasoning_effort = "xhigh"')
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
@@ -54,7 +59,7 @@ describe('UseKeyModal', () => {
       props: {
         show: true,
         apiKey: 'sk-test',
-        baseUrl: 'https://example.com/v1',
+        baseUrl: 'https://tianshu-64.base.trustbe.cn',
         platform: 'openai'
       },
       global: {
@@ -81,12 +86,47 @@ describe('UseKeyModal', () => {
     const configToml = codeBlocks.find((content) => content.includes('supports_websockets = true'))
 
     expect(configToml).toBeDefined()
+    expect(configToml).toContain('model_provider = "BEE64"')
+    expect(configToml).toContain('[model_providers.BEE64]')
+    expect(configToml).toContain('name = "BEE64"')
+    expect(configToml).toContain('base_url = "https://tianshu-64.base.trustbe.cn"')
     expect(configToml).toContain('model = "gpt-5.5"')
     expect(configToml).toContain('review_model = "gpt-5.5"')
+    expect(configToml).toContain('model_reasoning_effort = "high"')
+    expect(configToml).not.toContain('model_reasoning_effort = "xhigh"')
     expect(configToml).not.toContain('model = "gpt-5.4"')
     expect(configToml).not.toContain('model_context_window')
     expect(configToml).not.toContain('model_auto_compact_token_limit')
     expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
+  })
+
+  it('renders the configured public Anthropic base URL', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-test',
+        baseUrl: 'https://tianshu-64.base.trustbe.cn',
+        platform: 'anthropic'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    expect(codeBlocks).toContain(
+      'export ANTHROPIC_BASE_URL="https://tianshu-64.base.trustbe.cn"\n' +
+      'export ANTHROPIC_AUTH_TOKEN="sk-test"\n' +
+      'export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1\n' +
+      'export CLAUDE_CODE_ATTRIBUTION_HEADER=0'
+    )
   })
 
   it('renders GPT-5.4 mini entry in OpenCode config', async () => {
