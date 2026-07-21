@@ -4148,6 +4148,18 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	return true
 }
 
+func openAIStreamProviderErrorFields(payload []byte) (code, errorType string) {
+	code = strings.TrimSpace(gjson.GetBytes(payload, "response.error.code").String())
+	if code == "" {
+		code = strings.TrimSpace(gjson.GetBytes(payload, "error.code").String())
+	}
+	errorType = strings.TrimSpace(gjson.GetBytes(payload, "response.error.type").String())
+	if errorType == "" {
+		errorType = strings.TrimSpace(gjson.GetBytes(payload, "error.type").String())
+	}
+	return sanitizeUpstreamErrorIdentifier(code), sanitizeUpstreamErrorIdentifier(errorType)
+}
+
 func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 	c *gin.Context,
 	account *Account,
@@ -4157,6 +4169,7 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 	payload []byte,
 	message string,
 ) string {
+	providerErrorCode, providerErrorType := openAIStreamProviderErrorFields(payload)
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
 		message = "OpenAI upstream response failed"
@@ -4178,6 +4191,8 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 			Passthrough:        passthrough,
 			Kind:               kind,
 			Message:            message,
+			ProviderErrorCode:  providerErrorCode,
+			ProviderErrorType:  providerErrorType,
 			Detail:             detail,
 		}
 		if account != nil {

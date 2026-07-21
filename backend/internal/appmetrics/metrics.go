@@ -20,16 +20,20 @@ type UsageObservation struct {
 }
 
 type ErrorObservation struct {
-	Platform        string
-	Endpoint        string
-	RequestType     string
-	ErrorType       string
-	ErrorOwner      string
-	StatusCode      int
-	UpstreamStatus  int
-	UpstreamKinds   []string
-	Stream          bool
-	BusinessLimited bool
+	Platform         string
+	Model            string
+	Endpoint         string
+	RequestType      string
+	ErrorType        string
+	ErrorOwner       string
+	StatusCode       int
+	UpstreamStatus   int
+	UpstreamKinds    []string
+	UpstreamMessages []string
+	ProviderCodes    []string
+	ProviderTypes    []string
+	Stream           bool
+	BusinessLimited  bool
 }
 
 type Metrics struct {
@@ -52,7 +56,7 @@ func New() *Metrics {
 		upstreamErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "sub2api_upstream_errors_total",
 			Help: "Provider-owned and upstream HTTP errors by bounded category.",
-		}, []string{"platform", "category", "upstream_status"}),
+		}, []string{"platform", "model", "category", "upstream_status"}),
 		streamTerminations: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "sub2api_stream_terminations_total",
 			Help: "Observed abnormal stream terminations by bounded reason.",
@@ -163,7 +167,7 @@ func (m *Metrics) RecordError(obs ErrorObservation) {
 	).Inc()
 
 	if strings.EqualFold(strings.TrimSpace(obs.ErrorOwner), "provider") || obs.UpstreamStatus > 0 {
-		m.upstreamErrors.WithLabelValues(platform, category, normalizeStatus(obs.UpstreamStatus)).Inc()
+		m.upstreamErrors.WithLabelValues(platform, normalizeModel(obs.Model), category, normalizeStatus(obs.UpstreamStatus)).Inc()
 	}
 	if obs.Stream && streamReason != "" {
 		m.streamTerminations.WithLabelValues(platform, streamReason).Inc()
@@ -213,7 +217,71 @@ func normalizeStatus(value int) string {
 	return strconv.Itoa(value)
 }
 
+func normalizeModel(value string) string {
+	model := strings.ToLower(strings.TrimSpace(value))
+	knownPrefixes := []string{
+		"gpt-5.6-sol",
+		"gpt-5.6-luna",
+		"gpt-5.6-terra",
+		"gpt-5.4-mini",
+		"gpt-5.4",
+		"gpt-5.5",
+		"codex-auto-review",
+	}
+	for _, prefix := range knownPrefixes {
+		if strings.HasPrefix(model, prefix) {
+			return prefix
+		}
+	}
+	switch {
+	case strings.HasPrefix(model, "gpt-"):
+		return "gpt-other"
+	case strings.Contains(model, "codex"):
+		return "codex-other"
+	case strings.Contains(model, "claude") && strings.Contains(model, "opus"):
+		return "claude-opus"
+	case strings.Contains(model, "claude") && strings.Contains(model, "sonnet"):
+		return "claude-sonnet"
+	case strings.Contains(model, "claude") && strings.Contains(model, "haiku"):
+		return "claude-haiku"
+	case strings.Contains(model, "gemini") && strings.Contains(model, "pro"):
+		return "gemini-pro"
+	case strings.Contains(model, "gemini") && strings.Contains(model, "flash"):
+		return "gemini-flash"
+	case strings.Contains(model, "gemini"):
+		return "gemini-other"
+	case strings.Contains(model, "grok"):
+		return "grok"
+	default:
+		return "other"
+	}
+}
+
+func errorObservationContains(values []string, markers ...string) bool {
+	for _, value := range values {
+		normalized := strings.ToLower(strings.TrimSpace(value))
+		for _, marker := range markers {
+			if strings.Contains(normalized, marker) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func classifyError(obs ErrorObservation) (category string, streamReason string) {
+	if errorObservationContains(obs.UpstreamMessages, "selected model is at capacity", "model is at capacity") {
+		return "model_capacity", ""
+	}
+	if errorObservationContains(obs.ProviderCodes, "model_capacity", "model_at_capacity") {
+		return "model_capacity", ""
+	}
+	if errorObservationContains(obs.UpstreamMessages, "servers are currently overloaded", "server is overloaded") ||
+		errorObservationContains(obs.ProviderCodes, "server_is_overloaded", "server_overloaded") ||
+		errorObservationContains(obs.ProviderTypes, "server_is_overloaded", "server_overloaded") {
+		return "server_overloaded", ""
+	}
+
 	for _, raw := range obs.UpstreamKinds {
 		kind := strings.ToLower(strings.TrimSpace(raw))
 		switch kind {

@@ -101,6 +101,13 @@ func TestBuildOpsErrorLogsWhere_CyberPolicyStatusExemption(t *testing.T) {
 	if strings.Contains(whereRecovered, "status_code") {
 		t.Fatalf("upstream phase with IncludeRecoveredUpstream must not add any status_code clause\nfull: %s", whereRecovered)
 	}
+
+	// The general Ops view also opts in, so recovered upstream rows appear next
+	// to client-visible errors without requiring phase=upstream.
+	whereGeneralRecovered, _ := buildOpsErrorLogsWhere(&service.OpsErrorLogFilter{IncludeRecoveredUpstream: true})
+	if strings.Contains(whereGeneralRecovered, "status_code") {
+		t.Fatalf("general view with IncludeRecoveredUpstream must not add any status_code clause\nfull: %s", whereGeneralRecovered)
+	}
 }
 
 func TestBuildOpsErrorLogsWhere_MatchDeletedKeyOwner(t *testing.T) {

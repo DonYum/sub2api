@@ -149,16 +149,14 @@ type OpsErrorLogFilter struct {
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
-	// IncludeRecoveredUpstream 显式豁免 status>=400 守卫（仅在 Phase=="upstream" 时生效）：
-	// ops 专用上游错误列表需要看到 status<400 的 recovered upstream 行。
-	// 请求错误语义的端点不设此开关，phase=upstream 过滤照常生效且守卫保留。
+	// IncludeRecoveredUpstream explicitly bypasses the status>=400 guard.
+	// Ops monitoring views use it to include recovered upstream rows; request-error
+	// endpoints leave it false and retain client-visible error semantics.
 	IncludeRecoveredUpstream bool
 
 	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
-	// special-cased single `Phase` field (only Phase=="upstream" with
-	// IncludeRecoveredUpstream bypasses the status>=400 clause).
-	// NOTE: these ANY filters do NOT bypass status>=400; records with error_phase='upstream'
-	// but status_code<400 (recovered upstream errors) remain excluded.
+	// special-cased single `Phase` field. These ANY filters do not implicitly
+	// bypass status>=400; only IncludeRecoveredUpstream does that.
 	// Used to map user-facing coarse categories to backend conditions.
 	ErrorPhasesAny []string
 	ErrorTypesAny  []string

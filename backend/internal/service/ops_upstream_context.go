@@ -137,8 +137,28 @@ type OpsUpstreamErrorEvent struct {
 	// Kind: http_error | request_error | retry_exhausted | failover
 	Kind string `json:"kind,omitempty"`
 
-	Message string `json:"message,omitempty"`
-	Detail  string `json:"detail,omitempty"`
+	Message           string `json:"message,omitempty"`
+	ProviderErrorCode string `json:"provider_error_code,omitempty"`
+	ProviderErrorType string `json:"provider_error_type,omitempty"`
+	Detail            string `json:"detail,omitempty"`
+}
+
+func sanitizeUpstreamErrorIdentifier(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' || r == ':' {
+			b.WriteRune(r)
+		}
+		if b.Len() >= 128 {
+			break
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
@@ -154,9 +174,11 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	ev.Kind = strings.TrimSpace(ev.Kind)
 	ev.UpstreamURL = strings.TrimSpace(ev.UpstreamURL)
 	ev.Message = strings.TrimSpace(ev.Message)
+	ev.ProviderErrorCode = sanitizeUpstreamErrorIdentifier(ev.ProviderErrorCode)
+	ev.ProviderErrorType = sanitizeUpstreamErrorIdentifier(ev.ProviderErrorType)
 	ev.Detail = strings.TrimSpace(ev.Detail)
 	if ev.Message != "" {
-		ev.Message = sanitizeUpstreamErrorMessage(ev.Message)
+		ev.Message = truncateString(sanitizeUpstreamErrorMessage(ev.Message), 2048)
 	}
 
 	var existing []*OpsUpstreamErrorEvent

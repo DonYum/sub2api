@@ -974,13 +974,12 @@ func buildOpsErrorLogsWhere(filter *service.OpsErrorLogFilter) (string, []any) {
 		resolvedFilter = filter.Resolved
 	}
 	// Keep list endpoints scoped to client errors unless the caller explicitly opts
-	// into recovered upstream rows (Phase=="upstream" + IncludeRecoveredUpstream,
-	// ops 专用上游列表)。请求错误语义的端点即便过滤 phase=upstream 也保留该守卫。
+	// into recovered upstream rows. Request-error endpoints leave the flag false.
 	// cyber_policy is exempt from the status >= 400 guard: streaming cyber hits arrive with
 	// status 200 (the SSE stream opened successfully before upstream returned response.failed),
 	// but they are always client-visible blocked requests that belong in admin + user error
 	// lists.  Without the exemption the entire streaming-path cyber sink would be invisible.
-	if phaseFilter != "upstream" || filter == nil || !filter.IncludeRecoveredUpstream {
+	if filter == nil || !filter.IncludeRecoveredUpstream {
 		clauses = append(clauses, "(COALESCE(e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')")
 	}
 

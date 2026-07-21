@@ -47,13 +47,58 @@ func TestMetricsClassifyStreamErrorsWithoutRawErrorLabels(t *testing.T) {
 		Stream:         true,
 	})
 
-	require.Equal(t, float64(1), testutil.ToFloat64(m.upstreamErrors.WithLabelValues("openai", "first_output_timeout", "504")))
+	require.Equal(t, float64(1), testutil.ToFloat64(m.upstreamErrors.WithLabelValues("openai", "other", "first_output_timeout", "504")))
 	require.Equal(t, float64(1), testutil.ToFloat64(m.streamTerminations.WithLabelValues("openai", "first_output_timeout")))
 
 	metrics, err := m.registry.Gather()
 	require.NoError(t, err)
 	for _, family := range metrics {
 		require.False(t, strings.Contains(family.String(), "unique payload"))
+	}
+}
+
+func TestMetricsClassifyCapacityErrorsWithBoundedModelLabels(t *testing.T) {
+	m := New()
+	m.RecordError(ErrorObservation{
+		Platform:         "openai",
+		Model:            "gpt-5.6-sol-2026-07-unique-customer-suffix",
+		Endpoint:         "/responses",
+		RequestType:      "stream",
+		ErrorOwner:       "provider",
+		StatusCode:       200,
+		UpstreamStatus:   502,
+		UpstreamMessages: []string{"Selected model is at capacity. Please try a different model."},
+		ProviderTypes:    []string{"invalid_request_error"},
+		Stream:           true,
+	})
+
+	require.Equal(t, float64(1), testutil.ToFloat64(m.upstreamErrors.WithLabelValues("openai", "gpt-5.6-sol", "model_capacity", "502")))
+	metrics, err := m.registry.Gather()
+	require.NoError(t, err)
+	for _, family := range metrics {
+		text := family.String()
+		require.NotContains(t, text, "unique-customer-suffix")
+		require.NotContains(t, text, "Selected model is at capacity")
+	}
+}
+
+func TestMetricsClassifyServerOverloadedCodeAndCollapseUnknownModel(t *testing.T) {
+	m := New()
+	m.RecordError(ErrorObservation{
+		Platform:       "openai",
+		Model:          "customer-private-model-name",
+		ErrorOwner:     "provider",
+		StatusCode:     200,
+		UpstreamStatus: 502,
+		ProviderCodes:  []string{"server_is_overloaded"},
+	})
+
+	require.Equal(t, float64(1), testutil.ToFloat64(m.upstreamErrors.WithLabelValues("openai", "other", "server_overloaded", "502")))
+	metrics, err := m.registry.Gather()
+	require.NoError(t, err)
+	for _, family := range metrics {
+		require.NotContains(t, family.String(), "customer-private-model-name")
+		require.NotContains(t, family.String(), "server_is_overloaded")
 	}
 }
 
