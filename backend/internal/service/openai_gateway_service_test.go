@@ -1433,6 +1433,15 @@ func TestOpenAIStreamingResponseFailedAfterOutputSanitizesVerboseResponseForClie
 	require.NotContains(t, body, `"instructions"`)
 	require.NotContains(t, body, `"output"`)
 	require.NotContains(t, body, `"usage"`)
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "stream_failed", events[0].Kind)
+	require.Equal(t, "context_length_exceeded", events[0].ProviderErrorCode)
+	require.Equal(t, "Your input exceeds the context window of this model. Please adjust your input and try again.", events[0].Message)
 }
 
 func TestOpenAIStreamingContextWindowResponseFailedBeforeOutputPassesThrough(t *testing.T) {
@@ -1973,6 +1982,15 @@ func TestOpenAIStreamingPassthroughResponseFailedAfterOutputSanitizesVerboseResp
 	require.NotContains(t, body, `"instructions"`)
 	require.NotContains(t, body, `"output"`)
 	require.NotContains(t, body, `"usage"`)
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "stream_failed", events[0].Kind)
+	require.Equal(t, "context_length_exceeded", events[0].ProviderErrorCode)
+	require.Equal(t, "Your input exceeds the context window of this model. Please adjust your input and try again.", events[0].Message)
 }
 
 func TestOpenAIStreamingPassthroughResponseDoneWithoutDoneMarkerStillSucceeds(t *testing.T) {

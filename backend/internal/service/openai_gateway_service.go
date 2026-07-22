@@ -4347,6 +4347,8 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					})
 				} else if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {
 					return s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
+				} else {
+					failedMessage = s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
@@ -5465,6 +5467,8 @@ func (s *OpenAIGatewayService) handleStreamingResponse(ctx context.Context, resp
 					sawFailedEvent = true
 					streamFailoverErr = s.newOpenAIStreamFailoverError(c, account, false, upstreamRequestID, dataBytes, failedMessage)
 					return
+				} else {
+					failedMessage = s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
 				}
 				forceFlushFailedEvent = true
 				sawFailedEvent = true
