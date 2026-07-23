@@ -473,19 +473,30 @@ func (c *billingCache) SetUserPlatformQuotaCache(ctx context.Context, userID int
 		return strconv.FormatInt(p.Unix(), 10)
 	}
 
-	pipe.HSet(ctx, key,
-		"daily_usage", entry.DailyUsageUSD,
-		"weekly_usage", entry.WeeklyUsageUSD,
-		"monthly_usage", entry.MonthlyUsageUSD,
-		"version", entry.Version,
-		"schema_version", entry.SchemaVersion,
-		"daily_limit", fmtFloatPtr(entry.DailyLimitUSD),
-		"weekly_limit", fmtFloatPtr(entry.WeeklyLimitUSD),
-		"monthly_limit", fmtFloatPtr(entry.MonthlyLimitUSD),
-		"daily_window_start", fmtTimePtr(entry.DailyWindowStart),
-		"weekly_window_start", fmtTimePtr(entry.WeeklyWindowStart),
-		"monthly_window_start", fmtTimePtr(entry.MonthlyWindowStart),
-	)
+	// HMSET is used instead of variadic HSET for Redis 3.2 compatibility.
+	// Variadic HSET was introduced in Redis 4.0; on Redis 3.2 it causes the
+	// transaction to abort before EXEC, which silently drops the cache write.
+	fields := map[string]interface{}{
+		"daily_usage":          entry.DailyUsageUSD,
+		"weekly_usage":         entry.WeeklyUsageUSD,
+		"monthly_usage":        entry.MonthlyUsageUSD,
+		"version":              entry.Version,
+		"schema_version":       entry.SchemaVersion,
+		"daily_limit":          fmtFloatPtr(entry.DailyLimitUSD),
+		"weekly_limit":         fmtFloatPtr(entry.WeeklyLimitUSD),
+		"monthly_limit":        fmtFloatPtr(entry.MonthlyLimitUSD),
+		"daily_window_start":   fmtTimePtr(entry.DailyWindowStart),
+		"weekly_window_start":  fmtTimePtr(entry.WeeklyWindowStart),
+		"monthly_window_start": fmtTimePtr(entry.MonthlyWindowStart),
+	}
+	// go-redis/v9 removed the HMSet helper; send the legacy command explicitly
+	// so the wire command remains compatible with Redis 3.2.
+	hmsetArgs := make([]interface{}, 0, 2+len(fields)*2)
+	hmsetArgs = append(hmsetArgs, "HMSET", key)
+	for field, value := range fields {
+		hmsetArgs = append(hmsetArgs, field, value)
+	}
+	pipe.Do(ctx, hmsetArgs...)
 	pipe.Expire(ctx, key, ttl)
 	_, err := pipe.Exec(ctx)
 	return err
