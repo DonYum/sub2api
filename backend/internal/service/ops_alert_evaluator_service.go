@@ -32,10 +32,11 @@ return 0
 `)
 
 type OpsAlertEvaluatorService struct {
-	opsService   *OpsService
-	opsRepo      OpsRepository
-	emailService *EmailService
-	proxyRepo    ProxyRepository
+	opsService    *OpsService
+	opsRepo       OpsRepository
+	emailService  *EmailService
+	proxyRepo     ProxyRepository
+	alertNotifier opsAlertNotifier
 
 	redisClient *redis.Client
 	cfg         *config.Config
@@ -70,16 +71,21 @@ func NewOpsAlertEvaluatorService(
 	cfg *config.Config,
 	proxyRepo ProxyRepository,
 ) *OpsAlertEvaluatorService {
+	var alertNotifier opsAlertNotifier
+	if cfg != nil {
+		alertNotifier = newOpsFeishuAlertNotifier(cfg.Ops.FeishuAlert)
+	}
 	return &OpsAlertEvaluatorService{
-		opsService:   opsService,
-		opsRepo:      opsRepo,
-		emailService: emailService,
-		proxyRepo:    proxyRepo,
-		redisClient:  redisClient,
-		cfg:          cfg,
-		instanceID:   uuid.NewString(),
-		ruleStates:   map[int64]*opsAlertRuleState{},
-		emailLimiter: newSlidingWindowLimiter(0, time.Hour),
+		opsService:    opsService,
+		opsRepo:       opsRepo,
+		emailService:  emailService,
+		proxyRepo:     proxyRepo,
+		redisClient:   redisClient,
+		cfg:           cfg,
+		instanceID:    uuid.NewString(),
+		ruleStates:    map[int64]*opsAlertRuleState{},
+		emailLimiter:  newSlidingWindowLimiter(0, time.Hour),
+		alertNotifier: alertNotifier,
 	}
 }
 
@@ -199,6 +205,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 	eventsCreated := 0
 	eventsResolved := 0
 	emailsSent := 0
+	feishuSent := 0
 
 	now := time.Now().UTC()
 	safeEnd := now.Truncate(time.Minute)
@@ -295,6 +302,9 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				if s.maybeSendAlertEmail(ctx, runtimeCfg, rule, created) {
 					emailsSent++
 				}
+				if s.maybeSendAlertNotification(ctx, runtimeCfg, rule, created) {
+					feishuSent++
+				}
 			}
 			continue
 		}
@@ -306,11 +316,17 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] resolve event failed (event=%d): %v", activeEvent.ID, err)
 			} else {
 				eventsResolved++
+				resolvedEvent := *activeEvent
+				resolvedEvent.Status = OpsAlertStatusResolved
+				resolvedEvent.ResolvedAt = &resolvedAt
+				if s.maybeSendAlertNotification(ctx, runtimeCfg, rule, &resolvedEvent) {
+					feishuSent++
+				}
 			}
 		}
 	}
 
-	result := truncateString(fmt.Sprintf("rules=%d enabled=%d evaluated=%d created=%d resolved=%d emails_sent=%d", rulesTotal, rulesEnabled, rulesEvaluated, eventsCreated, eventsResolved, emailsSent), 2048)
+	result := truncateString(fmt.Sprintf("rules=%d enabled=%d evaluated=%d created=%d resolved=%d emails_sent=%d feishu_sent=%d", rulesTotal, rulesEnabled, rulesEvaluated, eventsCreated, eventsResolved, emailsSent, feishuSent), 2048)
 	s.recordHeartbeatSuccess(runAt, time.Since(startedAt), result)
 }
 
@@ -763,6 +779,21 @@ func (s *OpsAlertEvaluatorService) maybeSendAlertEmail(ctx context.Context, runt
 		_ = s.opsRepo.UpdateAlertEventEmailSent(context.Background(), event.ID, true)
 	}
 	return anySent
+}
+
+func (s *OpsAlertEvaluatorService) maybeSendAlertNotification(ctx context.Context, runtimeCfg *OpsAlertRuntimeSettings, rule *OpsAlertRule, event *OpsAlertEvent) bool {
+	if s == nil || s.alertNotifier == nil || rule == nil || event == nil {
+		return false
+	}
+	if runtimeCfg != nil && runtimeCfg.Silencing.Enabled && isOpsAlertSilenced(time.Now().UTC(), rule, event, runtimeCfg.Silencing) {
+		return false
+	}
+	sent, err := s.alertNotifier.Notify(ctx, rule, event)
+	if err != nil {
+		logger.LegacyPrintf("service.ops_alert_evaluator", "[OpsAlertEvaluator] feishu alert failed (event=%d): %v", event.ID, err)
+		return false
+	}
+	return sent
 }
 
 func opsAlertEmailVariables(rule *OpsAlertRule, event *OpsAlertEvent) map[string]string {

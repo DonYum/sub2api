@@ -860,6 +860,17 @@ ops:
   # Other detailed settings (cleanup, aggregation, etc.) are configured in ops settings dialog
   # 其他详细设置（数据清理、预聚合等）在运维监控设置对话框中配置
   enabled: true
+  # Feishu ops alerts reuse the existing alert evaluator and its firing/resolved lifecycle.
+  # Keep webhook_url and secret empty here; inject them with OPS_FEISHU_ALERT_WEBHOOK_URL
+  # and OPS_FEISHU_ALERT_SECRET so credentials are not committed to source control.
+  feishu_alert:
+    enabled: false
+    webhook_url: ""
+    secret: ""
+    min_severity: "P1"
+    rate_limit_per_hour: 20
+    include_resolved: true
+    timeout_seconds: 5
 
 # =============================================================================
 # JWT Configuration

@@ -1223,6 +1223,20 @@ type OpsConfig struct {
 
 	// Pre-aggregation configuration.
 	Aggregation OpsAggregationConfig `mapstructure:"aggregation"`
+
+	// FeishuAlert delivers existing ops alert events to a Feishu custom bot.
+	// WebhookURL and Secret should be injected through environment variables.
+	FeishuAlert OpsFeishuAlertConfig `mapstructure:"feishu_alert"`
+}
+
+type OpsFeishuAlertConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	WebhookURL       string `mapstructure:"webhook_url"`
+	Secret           string `mapstructure:"secret"`
+	MinSeverity      string `mapstructure:"min_severity"`
+	RateLimitPerHour int    `mapstructure:"rate_limit_per_hour"`
+	IncludeResolved  bool   `mapstructure:"include_resolved"`
+	TimeoutSeconds   int    `mapstructure:"timeout_seconds"`
 }
 
 type OpsCleanupConfig struct {
@@ -1474,6 +1488,9 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.OIDC.UsePKCEExplicit = hasExplicitConfigOrEnv("oidc_connect.use_pkce", "OIDC_CONNECT_USE_PKCE")
 	cfg.OIDC.ValidateIDTokenExplicit = hasExplicitConfigOrEnv("oidc_connect.validate_id_token", "OIDC_CONNECT_VALIDATE_ID_TOKEN")
 	cfg.Dashboard.KeyPrefix = strings.TrimSpace(cfg.Dashboard.KeyPrefix)
+	cfg.Ops.FeishuAlert.WebhookURL = strings.TrimSpace(cfg.Ops.FeishuAlert.WebhookURL)
+	cfg.Ops.FeishuAlert.Secret = strings.TrimSpace(cfg.Ops.FeishuAlert.Secret)
+	cfg.Ops.FeishuAlert.MinSeverity = strings.ToUpper(strings.TrimSpace(cfg.Ops.FeishuAlert.MinSeverity))
 	cfg.CORS.AllowedOrigins = normalizeStringSlice(cfg.CORS.AllowedOrigins)
 	cfg.Security.ResponseHeaders.AdditionalAllowed = normalizeStringSlice(cfg.Security.ResponseHeaders.AdditionalAllowed)
 	cfg.Security.ResponseHeaders.ForceRemove = normalizeStringSlice(cfg.Security.ResponseHeaders.ForceRemove)
@@ -1753,6 +1770,13 @@ func setDefaults() {
 	viper.SetDefault("ops.metrics_collector_cache.enabled", true)
 	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
 	viper.SetDefault("ops.metrics_collector_cache.ttl", 65*time.Second)
+	viper.SetDefault("ops.feishu_alert.enabled", false)
+	viper.SetDefault("ops.feishu_alert.webhook_url", "")
+	viper.SetDefault("ops.feishu_alert.secret", "")
+	viper.SetDefault("ops.feishu_alert.min_severity", "P1")
+	viper.SetDefault("ops.feishu_alert.rate_limit_per_hour", 20)
+	viper.SetDefault("ops.feishu_alert.include_resolved", true)
+	viper.SetDefault("ops.feishu_alert.timeout_seconds", 5)
 
 	// JWT
 	viper.SetDefault("jwt.secret", "")
@@ -2065,6 +2089,12 @@ func (c *Config) Validate() error {
 		}
 		if c.Log.Sampling.Thereafter < 0 {
 			return fmt.Errorf("log.sampling.thereafter must be non-negative")
+		}
+	}
+
+	if c.Ops.FeishuAlert.Enabled {
+		if err := validateOpsFeishuAlertConfig(c.Ops.FeishuAlert); err != nil {
+			return err
 		}
 	}
 
@@ -2876,6 +2906,43 @@ func validateMetricsConfig(cfg MetricsConfig) error {
 	ip := net.ParseIP(host)
 	if ip == nil || !ip.IsLoopback() {
 		return fmt.Errorf("metrics.listen_addr must use a loopback IP")
+	}
+	return nil
+}
+
+func validateOpsFeishuAlertConfig(cfg OpsFeishuAlertConfig) error {
+	webhookURL := strings.TrimSpace(cfg.WebhookURL)
+	if webhookURL == "" {
+		return fmt.Errorf("ops.feishu_alert.webhook_url is required when enabled")
+	}
+	parsed, err := url.Parse(webhookURL)
+	if err != nil {
+		return fmt.Errorf("ops.feishu_alert.webhook_url invalid: %w", err)
+	}
+	if parsed.Scheme != "https" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return fmt.Errorf("ops.feishu_alert.webhook_url must be an HTTPS Feishu webhook without userinfo, query, or fragment")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != "open.feishu.cn" && host != "open.larksuite.com" {
+		return fmt.Errorf("ops.feishu_alert.webhook_url host must be open.feishu.cn or open.larksuite.com")
+	}
+	const hookPath = "/open-apis/bot/v2/hook/"
+	if !strings.HasPrefix(parsed.EscapedPath(), hookPath) || strings.TrimPrefix(parsed.EscapedPath(), hookPath) == "" {
+		return fmt.Errorf("ops.feishu_alert.webhook_url path must be a custom bot hook")
+	}
+	if strings.TrimSpace(cfg.Secret) == "" {
+		return fmt.Errorf("ops.feishu_alert.secret is required when enabled")
+	}
+	switch strings.ToUpper(strings.TrimSpace(cfg.MinSeverity)) {
+	case "P0", "P1", "P2", "P3":
+	default:
+		return fmt.Errorf("ops.feishu_alert.min_severity must be one of: P0/P1/P2/P3")
+	}
+	if cfg.RateLimitPerHour <= 0 || cfg.RateLimitPerHour > 1000 {
+		return fmt.Errorf("ops.feishu_alert.rate_limit_per_hour must be between 1 and 1000")
+	}
+	if cfg.TimeoutSeconds <= 0 || cfg.TimeoutSeconds > 30 {
+		return fmt.Errorf("ops.feishu_alert.timeout_seconds must be between 1 and 30")
 	}
 	return nil
 }
