@@ -599,23 +599,41 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 
 	switch strings.TrimSpace(rule.MetricType) {
 	case "success_rate":
-		if overview.RequestCountSLA <= 0 {
+		if !opsAlertRateSampleIsSufficient(rule, overview.RequestCountSLA) {
 			return 0, false
 		}
 		return overview.SLA * 100, true
 	case "error_rate":
-		if overview.RequestCountSLA <= 0 {
+		if !opsAlertRateSampleIsSufficient(rule, overview.RequestCountSLA) {
 			return 0, false
 		}
 		return overview.ErrorRate * 100, true
 	case "upstream_error_rate":
-		if overview.RequestCountSLA <= 0 {
+		if !opsAlertRateSampleIsSufficient(rule, overview.RequestCountSLA) {
 			return 0, false
 		}
 		return overview.UpstreamErrorRate * 100, true
 	default:
 		return 0, false
 	}
+}
+
+func opsAlertRateSampleIsSufficient(rule *OpsAlertRule, requestCount int64) bool {
+	if requestCount <= 0 {
+		return false
+	}
+	if rule == nil || rule.Filters == nil {
+		return true
+	}
+	raw, ok := rule.Filters["minimum_request_count"]
+	if !ok {
+		return true
+	}
+	value, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(raw)), 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value <= 0 {
+		return true
+	}
+	return requestCount >= int64(math.Ceil(value))
 }
 
 func compareMetric(value float64, operator string, threshold float64) bool {

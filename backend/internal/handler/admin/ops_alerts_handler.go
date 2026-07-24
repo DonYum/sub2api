@@ -102,6 +102,15 @@ func isPercentOrRateMetric(metricType string) bool {
 	}
 }
 
+func isRequestRateMetric(metricType string) bool {
+	switch metricType {
+	case "success_rate", "error_rate", "upstream_error_rate":
+		return true
+	default:
+		return false
+	}
+}
+
 func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleValidatedInput, error) {
 	if raw == nil {
 		return nil, fmt.Errorf("invalid request body")
@@ -151,6 +160,21 @@ func validateOpsAlertRulePayload(raw map[string]json.RawMessage) (*opsAlertRuleV
 		}
 	} else if threshold < 0 {
 		return nil, fmt.Errorf("threshold must be >= 0")
+	}
+	if filtersJSON, ok := raw["filters"]; ok {
+		var filters map[string]json.RawMessage
+		if err := json.Unmarshal(filtersJSON, &filters); err != nil {
+			return nil, fmt.Errorf("filters must be an object")
+		}
+		if minimumJSON, exists := filters["minimum_request_count"]; exists {
+			if !isRequestRateMetric(metricType) {
+				return nil, fmt.Errorf("minimum_request_count is only supported for request rate metrics")
+			}
+			var minimum float64
+			if err := json.Unmarshal(minimumJSON, &minimum); err != nil || math.IsNaN(minimum) || math.IsInf(minimum, 0) || minimum < 1 || minimum > 1_000_000_000 || math.Trunc(minimum) != minimum {
+				return nil, fmt.Errorf("minimum_request_count must be an integer between 1 and 1000000000")
+			}
+		}
 	}
 
 	validated := &opsAlertRuleValidatedInput{

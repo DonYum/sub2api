@@ -5514,7 +5514,8 @@ export default {
         hints: {
           recommended: '推荐：运算符 {operator}，阈值 {threshold}{unit}',
           groupRequired: '该指标为分组级别指标，必须选择分组（group_id）。',
-          groupOptional: '可选：通过 group_id 将规则限定到某个分组。'
+          groupOptional: '可选：通过 group_id 将规则限定到某个分组。',
+          minimumRequestCount: '比例类规则可选。请求数低于该值时不评估，避免 1/1 等小样本误报。'
         },
         table: {
           name: '名称',
@@ -5536,6 +5537,7 @@ export default {
           window: '统计窗口（分钟）',
           sustained: '连续样本数（每分钟）',
           cooldown: '冷却期（分钟）',
+          minimumRequestCount: '最小请求样本数',
           enabled: '启用',
           notifyEmail: '发送邮件通知'
         },
@@ -5549,6 +5551,7 @@ export default {
           thresholdRequired: '阈值必须为数字',
           windowRange: '统计窗口必须为 1 / 5 / 60 分钟之一',
           sustainedRange: '连续样本数必须在 1 到 1440 之间',
+          minimumRequestCountRange: '最小请求样本数必须是正整数',
           cooldownRange: '冷却期必须在 0 到 1440 分钟之间'
         }
       },

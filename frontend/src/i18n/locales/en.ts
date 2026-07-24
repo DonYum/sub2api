@@ -5356,7 +5356,8 @@ export default {
         hints: {
           recommended: 'Recommended: operator {operator}, threshold {threshold}{unit}',
           groupRequired: 'This is a group-level metric; selecting a group (group_id) is required.',
-          groupOptional: 'Optional: limit the rule to a specific group via group_id.'
+          groupOptional: 'Optional: limit the rule to a specific group via group_id.',
+          minimumRequestCount: 'Optional for request-rate rules. Skip evaluation below this request count to avoid small-sample alerts such as 1/1.'
         },
         table: {
           name: 'Name',
@@ -5378,6 +5379,7 @@ export default {
           window: 'Window (minutes)',
           sustained: 'Sustained (samples)',
           cooldown: 'Cooldown (minutes)',
+          minimumRequestCount: 'Minimum request sample',
           enabled: 'Enabled',
           notifyEmail: 'Send email notifications'
         },
@@ -5391,6 +5393,7 @@ export default {
           thresholdRequired: 'Threshold must be a number',
           windowRange: 'Window must be one of: 1, 5, 60 minutes',
           sustainedRange: 'Sustained must be between 1 and 1440 samples',
+          minimumRequestCountRange: 'Minimum request sample must be a positive integer',
           cooldownRange: 'Cooldown must be between 0 and 1440 minutes'
         }
       },
