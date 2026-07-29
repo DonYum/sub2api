@@ -1244,6 +1244,7 @@ func TestOpenAIStreamingReadErrorBeforeOutputReturnsFailover(t *testing.T) {
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.False(t, failoverErr.SafeToFailoverAfterWrite)
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
 }
@@ -1325,6 +1326,7 @@ func TestOpenAIStreamingResponseFailedBeforeOutputCapacityErrorReturnsFailover(t
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
 	require.Contains(t, string(failoverErr.ResponseBody), "Selected model is at capacity")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
@@ -1372,6 +1374,7 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
 	require.Contains(t, string(failoverErr.ResponseBody), "Please retry later")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
@@ -1384,6 +1387,195 @@ func TestOpenAIStreamingResponseFailedBeforeOutputServerOverloadedCodeReturnsFai
 	require.Empty(t, events[0].ProviderErrorType)
 	require.Equal(t, "Please retry later.", events[0].Message)
 	require.Empty(t, events[0].Detail)
+}
+
+func TestOpenAIStreamingCapacityFailureAfterLargeOutputItemPreludeReturnsSafeFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	largeCreated := fmt.Sprintf(`data: {"sequence_number":0,"type":"response.created","response":{"id":"resp_real","instructions":%q}}`, strings.Repeat("x", 8*1024))
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			largeCreated,
+			"",
+			`data: {"sequence_number":1,"type":"response.in_progress","response":{"id":"resp_real"}}`,
+			"",
+			`data: {"sequence_number":2,"type":"response.output_item.added","output_index":0,"item":{"id":"msg_real","type":"message","status":"in_progress","content":[]}}`,
+			"",
+			`data: {"sequence_number":3,"type":"response.failed","response":{"id":"resp_real","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-large-real-capacity"}},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 26, Platform: PlatformOpenAI, Name: "lx-usa-gpt"}, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStreamingCapacityErrorPreludeThenGenericFailedReturnsSafeFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			fmt.Sprintf(`data: {"type":"response.created","response":{"instructions":%q}}`, strings.Repeat("x", 8*1024)),
+			"",
+			`data: {"type":"response.in_progress","sequence_number":1}`,
+			"",
+			`data: {"type":"error","sequence_number":2,"code":"server_error","message":"An error occurred while processing your request. You can retry your request."}`,
+			"",
+			`data: {"type":"response.failed","sequence_number":3,"response":{"error":{"message":"An error occurred while processing your request."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-capacity-error-prelude"}},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 26, Platform: PlatformOpenAI}, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
+	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "server_error", events[0].ProviderErrorCode)
+}
+
+func TestOpenAIStreamSafeFailoverPreludeReasonOnlyAcceptsTransientOrCapacityErrors(t *testing.T) {
+	require.Equal(t, "transient", openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error","code":"server_error","message":"An error occurred while processing your request. You can retry your request."}`),
+		"error",
+	))
+	require.Equal(t, "capacity", openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error","error":{"code":"server_is_overloaded","message":"Please retry later."}}`),
+		"error",
+	))
+	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error","code":"invalid_request_error","message":"Missing required parameter: instructions"}`),
+		"error",
+	))
+	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error"}`),
+		"error",
+	))
+	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error","code":"invalid_api_key","message":"Invalid API key"}`),
+		"error",
+	))
+	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"response.output_text.delta","delta":"partial"}`),
+		"response.output_text.delta",
+	))
+}
+
+func TestOpenAIStreamingNonRetryableErrorPreludeIsForwardedAfterLargePreamble(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{
+			name:    "top_level_code",
+			payload: `{"type":"error","code":"invalid_request_error","message":"Missing required parameter: instructions"}`,
+		},
+		{
+			name:    "nested_code",
+			payload: `{"type":"error","error":{"code":"invalid_request_error","message":"Missing required parameter: instructions"}}`,
+		},
+	}
+	paths := []struct {
+		name string
+		run  func(*OpenAIGatewayService, context.Context, *http.Response, *gin.Context, *Account) error
+	}{
+		{
+			name: "buffered",
+			run: func(svc *OpenAIGatewayService, ctx context.Context, resp *http.Response, c *gin.Context, account *Account) error {
+				_, err := svc.handleStreamingResponse(ctx, resp, c, account, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
+				return err
+			},
+		},
+		{
+			name: "passthrough",
+			run: func(svc *OpenAIGatewayService, ctx context.Context, resp *http.Response, c *gin.Context, account *Account) error {
+				_, err := svc.handleStreamingResponsePassthrough(ctx, resp, c, account, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
+				return err
+			},
+		},
+	}
+
+	for _, path := range paths {
+		for _, tt := range tests {
+			t.Run(path.name+"/"+tt.name, func(t *testing.T) {
+				svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				resp := &http.Response{
+					StatusCode: http.StatusOK,
+					Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+						fmt.Sprintf(`data: {"type":"response.created","response":{"instructions":%q}}`, strings.Repeat("x", 8*1024)),
+						"",
+						`data: {"type":"response.in_progress","sequence_number":1}`,
+						"",
+						"data: " + tt.payload,
+						"",
+					}, "\n"))),
+					Header: http.Header{"X-Request-Id": []string{"rid-nonretryable-error-prelude"}},
+				}
+
+				err := path.run(svc, c.Request.Context(), resp, c, &Account{ID: 26, Platform: PlatformOpenAI})
+				require.Error(t, err)
+				var failoverErr *UpstreamFailoverError
+				require.False(t, errors.As(err, &failoverErr))
+				require.True(t, c.Writer.Written())
+				require.Contains(t, rec.Body.String(), `"code":"invalid_request_error"`)
+			})
+		}
+	}
+}
+
+func TestOpenAIStreamingCapacityFailureAfterSemanticOutputDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			`data: {"type":"response.output_text.delta","delta":"partial"}`,
+			"",
+			`data: {"type":"response.failed","response":{"id":"resp_1","error":{"code":"server_is_overloaded","message":"Please retry later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-overloaded-postcommit"}},
+	}
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.Contains(t, rec.Body.String(), `"delta":"partial"`)
+	require.Contains(t, rec.Body.String(), "response.failed")
 }
 
 func TestOpenAIStreamingResponseFailedAfterOutputSanitizesVerboseResponseForClient(t *testing.T) {
@@ -1555,6 +1747,90 @@ func TestOpenAIStreamingPreambleKeepaliveUsesDownstreamIdle(t *testing.T) {
 	require.NotNil(t, result)
 	require.Contains(t, rec.Body.String(), ":\n\n")
 	require.Contains(t, rec.Body.String(), "response.completed")
+}
+
+func TestOpenAIStreamingPreambleKeepaliveCapacityFailureKeepsPreludeBuffered(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		StreamKeepaliveInterval: 1,
+		MaxLineSize:             defaultMaxLineSize,
+	}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{"X-Request-Id": []string{"rid-overloaded-keepalive"}}}
+
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\"}}\n\n"))
+		time.Sleep(1100 * time.Millisecond)
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Please retry later.\"}}}\n\n"))
+	}()
+
+	_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model")
+	_ = pr.Close()
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
+	require.True(t, c.Writer.Written(), "keepalive should commit the HTTP SSE response")
+	require.Contains(t, rec.Body.String(), ":\n\n")
+	require.NotContains(t, rec.Body.String(), "response.created")
+	require.NotContains(t, rec.Body.String(), "response.failed")
+}
+
+func TestOpenAIStreamingCapacityRetryEmitsSingleCreatedEvent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{
+		StreamKeepaliveInterval: 1,
+		MaxLineSize:             defaultMaxLineSize,
+	}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+
+	pr, pw := io.Pipe()
+	first := &http.Response{StatusCode: http.StatusOK, Body: pr, Header: http.Header{"X-Request-Id": []string{"rid-attempt-1"}}}
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.created\",\"response\":{\"id\":\"discarded\"}}\n\n"))
+		time.Sleep(1100 * time.Millisecond)
+		_, _ = pw.Write([]byte("data: {\"type\":\"response.failed\",\"response\":{\"usage\":{\"input_tokens\":7,\"output_tokens\":0},\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Please retry later.\"}}}\n\n"))
+	}()
+	_, firstErr := svc.handleStreamingResponse(c.Request.Context(), first, c, &Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model")
+	_ = pr.Close()
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, firstErr, &failoverErr)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
+
+	second := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"kept"}}`,
+			"",
+			`data: {"type":"response.output_text.delta","delta":"ok"}`,
+			"",
+			`data: {"type":"response.completed","response":{"id":"kept","usage":{"input_tokens":3,"output_tokens":1}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-attempt-2"}},
+	}
+	_, secondErr := svc.handleStreamingResponse(c.Request.Context(), second, c, &Account{ID: 2, Platform: PlatformOpenAI}, time.Now(), "model", "model")
+	require.NoError(t, secondErr)
+	MarkOpenAICapacityFailoverOutcome(c, "recovered")
+	require.Equal(t, 1, strings.Count(rec.Body.String(), `"type":"response.created"`))
+	require.NotContains(t, rec.Body.String(), "discarded")
+	require.Contains(t, rec.Body.String(), `"id":"kept"`)
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "rid-attempt-1", events[0].UpstreamRequestID)
+	require.Equal(t, 7, events[0].AttemptInputTokens)
+	require.Equal(t, "recovered", events[0].AttemptOutcome)
 }
 
 func TestOpenAIStreamingNormalizesTerminalOutputFromDeltas(t *testing.T) {
@@ -1935,6 +2211,113 @@ func TestOpenAIStreamingPassthroughResponseFailedBeforeOutputReturnsFailover(t *
 	require.Contains(t, string(failoverErr.ResponseBody), "upstream processing failed")
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAIStreamingPassthroughCapacityFailureAfterOutputItemAddedReturnsSafeFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"sequence_number":0,"type":"response.created","response":{"id":"resp_real"}}`,
+			"",
+			`data: {"sequence_number":1,"type":"response.in_progress","response":{"id":"resp_real"}}`,
+			"",
+			`data: {"sequence_number":2,"type":"response.output_item.added","output_index":0,"item":{"id":"msg_real","type":"message","status":"in_progress","content":[]}}`,
+			"",
+			`data: {"sequence_number":3,"type":"response.failed","response":{"id":"resp_real","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-real-capacity"}},
+	}
+
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 26, Platform: PlatformOpenAI, Name: "lx-usa-gpt"}, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.True(t, events[0].SafeToFailover)
+	require.Equal(t, "retrying", events[0].AttemptOutcome)
+}
+
+func TestOpenAIStreamingPassthroughCapacityErrorPreludeThenGenericFailedReturnsSafeFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","sequence_number":0}`,
+			"",
+			`data: {"type":"response.in_progress","sequence_number":1}`,
+			"",
+			`data: {"type":"error","sequence_number":2,"code":"server_error","message":"An error occurred while processing your request. You can retry your request."}`,
+			"",
+			`data: {"type":"response.failed","sequence_number":3,"response":{"error":{"message":"An error occurred while processing your request."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-passthrough-capacity-error-prelude"}},
+	}
+
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 26, Platform: PlatformOpenAI}, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.SafeToFailoverAfterWrite)
+	require.Contains(t, string(failoverErr.ResponseBody), "An error occurred while processing your request")
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Equal(t, "server_error", events[0].ProviderErrorCode)
+}
+
+func TestOpenAIStreamingPassthroughCapacityFailureAfterSemanticDeltaDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`data: {"type":"response.created","response":{"id":"resp_1"}}`,
+			"",
+			`data: {"type":"response.output_item.added","item":{"type":"message","status":"in_progress","content":[]}}`,
+			"",
+			`data: {"type":"response.output_text.delta","delta":"partial"}`,
+			"",
+			`data: {"type":"response.failed","response":{"error":{"code":"server_is_overloaded","message":"Please retry later."}}}`,
+			"",
+		}, "\n"))),
+		Header: http.Header{"X-Request-Id": []string{"rid-capacity-after-delta"}},
+	}
+
+	_, err := svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, &Account{ID: 26, Platform: PlatformOpenAI}, time.Now(), "gpt-5.6-sol", "gpt-5.6-sol")
+	require.Error(t, err)
+	var failoverErr *UpstreamFailoverError
+	require.False(t, errors.As(err, &failoverErr))
+	require.True(t, c.Writer.Written())
+	require.Contains(t, rec.Body.String(), `"delta":"partial"`)
+	require.Contains(t, rec.Body.String(), `"type":"response.failed"`)
 }
 
 func TestOpenAIStreamingPassthroughResponseFailedAfterOutputSanitizesVerboseResponseForClient(t *testing.T) {
