@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -119,4 +120,139 @@ func TestStreamWrittenGuard_NoByteWritten_GuardNotTriggered(t *testing.T) {
 	guardTriggered := c.Writer.Size() != sizeBeforeForward
 	require.False(t, guardTriggered,
 		"未写入任何字节时，守卫条件必须为 false，应允许正常 failover 继续")
+}
+
+func TestOpenAIForwardCanFailoverOnlyBypassesWrittenGuardForExplicitSafeSignal(t *testing.T) {
+	require.False(t, openAIForwardCanFailover(-1, 3, &service.UpstreamFailoverError{}))
+	require.True(t, openAIForwardCanFailover(-1, 3, &service.UpstreamFailoverError{SafeToFailoverAfterWrite: true}))
+	require.True(t, openAIForwardCanFailover(-1, -1, &service.UpstreamFailoverError{}))
+}
+
+func TestOpenAICapacitySafeFailoverCanReachLowerPriorityAccount(t *testing.T) {
+	failed := &service.Account{Priority: 1}
+	ordinaryFloor := updateOpenAIFailoverPriorityFloorForError(nil, failed, &service.UpstreamFailoverError{})
+	require.NotNil(t, ordinaryFloor)
+	require.Equal(t, 1, *ordinaryFloor)
+	require.True(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(ordinaryFloor, &service.Account{Priority: 4}))
+
+	capacityFloor := updateOpenAIFailoverPriorityFloorForError(nil, failed, &service.UpstreamFailoverError{SafeToFailoverAfterWrite: true})
+	require.Nil(t, capacityFloor)
+	require.False(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(capacityFloor, &service.Account{Priority: 4}))
+}
+
+func TestOpenAIFailoverPriorityFloorMixedFailureSequence(t *testing.T) {
+	capacity := &service.UpstreamFailoverError{SafeToFailoverAfterWrite: true}
+	ordinary := &service.UpstreamFailoverError{}
+
+	t.Run("capacity then ordinary restores floor for later attempts", func(t *testing.T) {
+		floor := updateOpenAIFailoverPriorityFloorForError(nil, &service.Account{Priority: 1}, capacity)
+		require.Nil(t, floor)
+		require.False(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(floor, &service.Account{Priority: 4}))
+
+		floor = updateOpenAIFailoverPriorityFloorForError(floor, &service.Account{Priority: 4}, ordinary)
+		require.NotNil(t, floor)
+		require.Equal(t, 4, *floor)
+		require.True(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(floor, &service.Account{Priority: 10}))
+	})
+
+	t.Run("ordinary then capacity preserves existing floor", func(t *testing.T) {
+		floor := updateOpenAIFailoverPriorityFloorForError(nil, &service.Account{Priority: 1}, ordinary)
+		require.NotNil(t, floor)
+		require.Equal(t, 1, *floor)
+
+		floor = updateOpenAIFailoverPriorityFloorForError(floor, &service.Account{Priority: 4}, capacity)
+		require.NotNil(t, floor)
+		require.Equal(t, 1, *floor)
+		require.True(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(floor, &service.Account{Priority: 4}))
+		require.True(t, shouldStopOpenAIHTTPFailoverAtLowerPriority(floor, &service.Account{Priority: 10}))
+	})
+}
+
+func TestOpenAIFailoverLoopCapacityThenOrdinaryStopsBeforeLowerPriorityForward(t *testing.T) {
+	candidates := []*service.Account{
+		{ID: 26, Priority: 1},
+		{ID: 22, Priority: 4},
+		{ID: 15, Priority: 10},
+	}
+	failures := map[int64]*service.UpstreamFailoverError{
+		26: {SafeToFailoverAfterWrite: true},
+		22: {},
+	}
+	failed := make(map[int64]struct{})
+	var floor *int
+	capacityRetries := 0
+	forwarded := make([]int64, 0, 2)
+	var blockedAccountID int64
+
+	for {
+		var selected *service.Account
+		for _, candidate := range candidates {
+			if _, excluded := failed[candidate.ID]; !excluded {
+				selected = candidate
+				break
+			}
+		}
+		require.NotNil(t, selected)
+		if shouldStopOpenAIHTTPFailoverAtLowerPriority(floor, selected) {
+			blockedAccountID = selected.ID
+			break
+		}
+
+		forwarded = append(forwarded, selected.ID)
+		failoverErr := failures[selected.ID]
+		require.NotNil(t, failoverErr)
+		if failoverErr.SafeToFailoverAfterWrite {
+			require.Less(t, capacityRetries, openAICapacityPrecommitRetryLimit)
+			capacityRetries++
+		}
+		failed[selected.ID] = struct{}{}
+		floor = updateOpenAIFailoverPriorityFloorForError(floor, selected, failoverErr)
+	}
+
+	require.Equal(t, []int64{26, 22}, forwarded)
+	require.Equal(t, int64(15), blockedAccountID)
+	require.Equal(t, 1, capacityRetries, "capacity retry count is global across accounts")
+}
+
+func TestOpenAIQueuePingBeforeForwardDoesNotBlockNormal503Failover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	_, err := c.Writer.Write([]byte(": ping\n\n"))
+	require.NoError(t, err)
+	sizeBeforeForward := c.Writer.Size()
+
+	require.True(t, openAIForwardCanFailover(sizeBeforeForward, c.Writer.Size(), &service.UpstreamFailoverError{
+		StatusCode: http.StatusServiceUnavailable,
+	}), "bytes written before Forward must not count as this attempt's output")
+}
+
+func TestOpenAICapacityPrecommitRetryUsesIndependentTotalBudget(t *testing.T) {
+	require.True(t, openAICapacityPrecommitRetryWithinBudget(time.Now().Add(-59*time.Second)))
+	require.False(t, openAICapacityPrecommitRetryWithinBudget(time.Now().Add(-61*time.Second)))
+	require.False(t, openAICapacityPrecommitRetryWithinBudget(time.Time{}))
+	require.True(t, shouldRetryOpenAICapacityPrecommit(time.Now(), 0))
+	require.False(t, shouldRetryOpenAICapacityPrecommit(time.Now(), 1), "capacity precommit permits at most one retry")
+}
+
+func TestOpenAICapacityExhaustionAfterKeepaliveWritesResponsesSSE(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	_, err := c.Writer.Write([]byte(":\n\n"))
+	require.NoError(t, err)
+
+	h := &OpenAIGatewayHandler{}
+	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:               http.StatusBadGateway,
+		ResponseBody:             []byte(`{"error":{"message":"overloaded"}}`),
+		SafeToFailoverAfterWrite: true,
+	}, c.Writer.Written())
+
+	body := w.Body.String()
+	require.Contains(t, body, ":\n\n")
+	require.Contains(t, body, "event: response.failed")
+	require.NotContains(t, body, `{"error":{"type":"upstream_error"`)
 }
