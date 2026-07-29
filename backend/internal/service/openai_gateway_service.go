@@ -3988,8 +3988,14 @@ func openAIStreamSafeFailoverPreludeReason(payload []byte, eventType string) str
 		return ""
 	}
 	message := extractOpenAISSEErrorMessage(payload)
+	if isOpenAIContextWindowError(message, payload) {
+		return ""
+	}
 	if openAIStreamFailedEventIsCapacity(payload, message) {
 		return "capacity"
+	}
+	if openAIStreamFailedEventHasNonRetryableMarker(payload, message) {
+		return ""
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return "transient"
@@ -4012,14 +4018,21 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	if isOpenAIContextWindowError(message, payload) {
 		return false
 	}
+	if openAIStreamFailedEventIsCapacity(payload, message) {
+		return true
+	}
+	if openAIStreamFailedEventHasNonRetryableMarker(payload, message) {
+		return false
+	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
 	}
+	return true
+}
+
+func openAIStreamFailedEventHasNonRetryableMarker(payload []byte, message string) bool {
 	code, errType := openAIStreamProviderErrorFields(payload)
 	combined := strings.ToLower(strings.TrimSpace(message + " " + code + " " + errType))
-	if combined == "" {
-		return true
-	}
 	nonRetryableMarkers := []string{
 		"invalid_request",
 		"content_policy",
@@ -4031,10 +4044,10 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	}
 	for _, marker := range nonRetryableMarkers {
 		if strings.Contains(combined, marker) {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func openAIStreamFailedEventIsCapacity(payload []byte, message string) bool {

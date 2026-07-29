@@ -1449,9 +1449,32 @@ func TestOpenAIStreamSafeFailoverPreludeReasonOnlyAcceptsTransientOrCapacityErro
 		[]byte(`{"type":"error","error":{"code":"server_is_overloaded","message":"Please retry later."}}`),
 		"error",
 	))
+	capacityWithPolicyMessage := []byte(`{"type":"error","error":{"code":"server_is_overloaded","message":"Server is overloaded. See our retry policy at help.openai.com."}}`)
+	require.Equal(t, "capacity", openAIStreamSafeFailoverPreludeReason(capacityWithPolicyMessage, "error"), "an explicit capacity code must override prose markers")
+	require.True(t, openAIStreamFailedEventShouldFailover(capacityWithPolicyMessage, "Server is overloaded. See our retry policy at help.openai.com."))
 	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
 		[]byte(`{"type":"error","code":"invalid_request_error","message":"Missing required parameter: instructions"}`),
 		"error",
+	))
+	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error","code":"invalid_request_error","message":"An error occurred while processing your request. You can retry your request."}`),
+		"error",
+	), "a transient phrase must not override an explicit non-retryable code")
+	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error","error":{"code":"context_length_exceeded","message":"An error occurred while processing your request because the maximum context length was exceeded."}}`),
+		"error",
+	), "a transient phrase must not override a context-window error")
+	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
+		[]byte(`{"type":"error","error":{"code":"server_is_overloaded","message":"The maximum context length was exceeded."}}`),
+		"error",
+	), "a capacity code must not override a context-window error")
+	require.False(t, openAIStreamFailedEventShouldFailover(
+		[]byte(`{"type":"error","code":"invalid_request_error","message":"An error occurred while processing your request. You can retry your request."}`),
+		"An error occurred while processing your request. You can retry your request.",
+	))
+	require.False(t, openAIStreamFailedEventShouldFailover(
+		[]byte(`{"type":"error","error":{"code":"context_length_exceeded","message":"An error occurred while processing your request because the maximum context length was exceeded."}}`),
+		"An error occurred while processing your request because the maximum context length was exceeded.",
 	))
 	require.Empty(t, openAIStreamSafeFailoverPreludeReason(
 		[]byte(`{"type":"error"}`),
@@ -1470,16 +1493,29 @@ func TestOpenAIStreamSafeFailoverPreludeReasonOnlyAcceptsTransientOrCapacityErro
 func TestOpenAIStreamingNonRetryableErrorPreludeIsForwardedAfterLargePreamble(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	tests := []struct {
-		name    string
-		payload string
+		name         string
+		payload      string
+		expectedCode string
 	}{
 		{
-			name:    "top_level_code",
-			payload: `{"type":"error","code":"invalid_request_error","message":"Missing required parameter: instructions"}`,
+			name:         "top_level_code",
+			payload:      `{"type":"error","code":"invalid_request_error","message":"Missing required parameter: instructions"}`,
+			expectedCode: "invalid_request_error",
 		},
 		{
-			name:    "nested_code",
-			payload: `{"type":"error","error":{"code":"invalid_request_error","message":"Missing required parameter: instructions"}}`,
+			name:         "nested_code",
+			payload:      `{"type":"error","error":{"code":"invalid_request_error","message":"Missing required parameter: instructions"}}`,
+			expectedCode: "invalid_request_error",
+		},
+		{
+			name:         "top_level_invalid_request_with_transient_phrase",
+			payload:      `{"type":"error","code":"invalid_request_error","message":"An error occurred while processing your request. You can retry your request."}`,
+			expectedCode: "invalid_request_error",
+		},
+		{
+			name:         "nested_context_window_with_transient_phrase",
+			payload:      `{"type":"error","error":{"code":"context_length_exceeded","message":"An error occurred while processing your request because the maximum context length was exceeded."}}`,
+			expectedCode: "context_length_exceeded",
 		},
 	}
 	paths := []struct {
@@ -1527,7 +1563,7 @@ func TestOpenAIStreamingNonRetryableErrorPreludeIsForwardedAfterLargePreamble(t 
 				var failoverErr *UpstreamFailoverError
 				require.False(t, errors.As(err, &failoverErr))
 				require.True(t, c.Writer.Written())
-				require.Contains(t, rec.Body.String(), `"code":"invalid_request_error"`)
+				require.Contains(t, rec.Body.String(), `"code":"`+tt.expectedCode+`"`)
 			})
 		}
 	}

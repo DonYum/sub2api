@@ -51,7 +51,7 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 type openAIModelBodyReplaceFunc func([]byte, string) []byte
 
 const (
-	openAICapacityPrecommitRetryLimit       = 1
+	openAICapacityPrecommitRetryLimit       = 3
 	openAICapacityPrecommitRetryTotalBudget = 60 * time.Second
 )
 
@@ -65,6 +65,17 @@ func openAICapacityPrecommitRetryWithinBudget(startedAt time.Time) bool {
 
 func shouldRetryOpenAICapacityPrecommit(startedAt time.Time, retries int) bool {
 	return retries < openAICapacityPrecommitRetryLimit && openAICapacityPrecommitRetryWithinBudget(startedAt)
+}
+
+func claimOpenAICapacityPrecommitRetry(startedAt time.Time, retries int, accountID int64, retriedAccountIDs map[int64]struct{}) bool {
+	if _, alreadyRetried := retriedAccountIDs[accountID]; alreadyRetried {
+		return false
+	}
+	if !shouldRetryOpenAICapacityPrecommit(startedAt, retries) {
+		return false
+	}
+	retriedAccountIDs[accountID] = struct{}{}
+	return true
 }
 
 func updateOpenAIFailoverPriorityFloorForError(
@@ -368,6 +379,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	capacityPrecommitRetryCount := 0
 	capacityPrecommitRetryPending := false
+	capacityPrecommitRetriedAccountIDs := make(map[int64]struct{})
 	var capacityRetryBudgetStartedAt time.Time
 	var lastFailoverErr *service.UpstreamFailoverError
 
@@ -495,7 +507,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						return
 					}
 					if failoverErr.SafeToFailoverAfterWrite {
-						if !shouldRetryOpenAICapacityPrecommit(capacityRetryBudgetStartedAt, capacityPrecommitRetryCount) {
+						if !claimOpenAICapacityPrecommitRetry(capacityRetryBudgetStartedAt, capacityPrecommitRetryCount, account.ID, capacityPrecommitRetriedAccountIDs) {
 							service.MarkOpenAICapacityFailoverOutcome(c, "exhausted")
 							h.handleFailoverExhausted(c, failoverErr, c.Writer.Written())
 							return
