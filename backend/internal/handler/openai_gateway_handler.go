@@ -50,6 +50,34 @@ func resolveOpenAIMessagesDispatchMappedModel(apiKey *service.APIKey, requestedM
 
 type openAIModelBodyReplaceFunc func([]byte, string) []byte
 
+const (
+	openAICapacityPrecommitRetryLimit       = 1
+	openAICapacityPrecommitRetryTotalBudget = 60 * time.Second
+)
+
+func openAIForwardCanFailover(writerSizeBefore, writerSizeAfter int, failoverErr *service.UpstreamFailoverError) bool {
+	return writerSizeBefore == writerSizeAfter || (failoverErr != nil && failoverErr.SafeToFailoverAfterWrite)
+}
+
+func openAICapacityPrecommitRetryWithinBudget(startedAt time.Time) bool {
+	return !startedAt.IsZero() && time.Since(startedAt) < openAICapacityPrecommitRetryTotalBudget
+}
+
+func shouldRetryOpenAICapacityPrecommit(startedAt time.Time, retries int) bool {
+	return retries < openAICapacityPrecommitRetryLimit && openAICapacityPrecommitRetryWithinBudget(startedAt)
+}
+
+func updateOpenAIFailoverPriorityFloorForError(
+	priorityFloor *int,
+	failedAccount *service.Account,
+	failoverErr *service.UpstreamFailoverError,
+) *int {
+	if failoverErr != nil && failoverErr.SafeToFailoverAfterWrite {
+		return priorityFloor
+	}
+	return updateOpenAIFailoverPriorityFloor(priorityFloor, failedAccount)
+}
+
 func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace openAIModelBodyReplaceFunc) []byte {
 	if !mapped || replace == nil {
 		return body
@@ -286,6 +314,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
 	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
+	if channelMapping.Mapped {
+		setOpsEndpointContext(c, channelMapping.MappedModel, int16(service.RequestTypeFromLegacy(reqStream, false)))
+	}
 
 	// 提前校验 function_call_output 是否具备可关联上下文，避免上游 400。
 	if !h.validateFunctionCallOutputRequest(c, body, reqLog) {
@@ -335,6 +366,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	switchCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
+	capacityPrecommitRetryCount := 0
+	capacityPrecommitRetryPending := false
+	var capacityRetryBudgetStartedAt time.Time
 	var lastFailoverErr *service.UpstreamFailoverError
 	var failoverPriorityFloor *int
 
@@ -372,7 +406,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				return
 			}
 			if lastFailoverErr != nil {
-				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				service.MarkOpenAICapacityFailoverOutcome(c, "exhausted")
+				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted || c.Writer.Written())
 			} else {
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 			}
@@ -408,11 +443,20 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
 			if lastFailoverErr != nil {
-				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted)
+				service.MarkOpenAICapacityFailoverOutcome(c, "exhausted")
+				h.handleFailoverExhausted(c, lastFailoverErr, streamStarted || c.Writer.Written())
 			} else {
 				h.handleFailoverExhaustedSimple(c, 502, streamStarted)
 			}
 			return
+		}
+		if capacityPrecommitRetryPending {
+			reqLog.Info("openai.capacity_precommit_retry_selected",
+				zap.Int64("account_id", account.ID),
+				zap.Int("account_priority", account.Priority),
+				zap.Int("retry_count", capacityPrecommitRetryCount),
+			)
+			capacityPrecommitRetryPending = false
 		}
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
@@ -425,6 +469,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 		// Forward request
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
+		if capacityRetryBudgetStartedAt.IsZero() {
+			capacityRetryBudgetStartedAt = time.Now()
+		}
 		forwardStart := time.Now()
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
@@ -466,9 +513,18 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				}
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
-					if c.Writer.Size() != writerSizeBeforeForward {
+					if !openAIForwardCanFailover(writerSizeBeforeForward, c.Writer.Size(), failoverErr) {
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
+					}
+					if failoverErr.SafeToFailoverAfterWrite {
+						if !shouldRetryOpenAICapacityPrecommit(capacityRetryBudgetStartedAt, capacityPrecommitRetryCount) {
+							service.MarkOpenAICapacityFailoverOutcome(c, "exhausted")
+							h.handleFailoverExhausted(c, failoverErr, c.Writer.Written())
+							return
+						}
+						capacityPrecommitRetryCount++
+						capacityPrecommitRetryPending = true
 					}
 					h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 					// 池模式：同账号重试
@@ -492,15 +548,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
-					failoverPriorityFloor = updateOpenAIFailoverPriorityFloor(failoverPriorityFloor, account)
+					failoverPriorityFloor = updateOpenAIFailoverPriorityFloorForError(failoverPriorityFloor, account, failoverErr)
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
-						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						service.MarkOpenAICapacityFailoverOutcome(c, "exhausted")
+						h.handleFailoverExhausted(c, failoverErr, streamStarted || c.Writer.Written())
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount) {
-						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						service.MarkOpenAICapacityFailoverOutcome(c, "exhausted")
+						h.handleFailoverExhausted(c, failoverErr, streamStarted || c.Writer.Written())
 						return
 					}
 					reqLog.Warn("openai.upstream_failover_switching",
@@ -532,6 +590,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		if result != nil {
+			service.MarkOpenAICapacityFailoverOutcome(c, "recovered")
 			// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)

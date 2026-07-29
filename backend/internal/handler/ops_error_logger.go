@@ -28,7 +28,7 @@ const (
 	opsAccountIDKey              = "ops_account_id"
 	opsRoutingCapacityLimitedKey = "ops_routing_capacity_limited"
 
-	opsUpstreamModelKey = "ops_upstream_model"
+	opsUpstreamModelKey = service.OpsUpstreamModelKey
 	opsRequestTypeKey   = "ops_request_type"
 
 	// 错误过滤匹配常量 — shouldSkipOpsErrorLog 和错误分类共用
@@ -405,7 +405,7 @@ func setOpsEndpointContext(c *gin.Context, upstreamModel string, requestType int
 		return
 	}
 	if upstreamModel = strings.TrimSpace(upstreamModel); upstreamModel != "" {
-		c.Set(opsUpstreamModelKey, upstreamModel)
+		service.SetOpsUpstreamModel(c, upstreamModel)
 	}
 	c.Set(opsRequestTypeKey, requestType)
 }
@@ -424,6 +424,18 @@ func setOpsSelectedAccount(c *gin.Context, accountID int64, platform ...string) 
 			}
 		}
 		c.Request = c.Request.WithContext(ctx)
+	}
+}
+
+func populateOpsProviderErrorFields(entry *service.OpsInsertErrorLogInput) {
+	if entry == nil || len(entry.UpstreamErrors) == 0 {
+		return
+	}
+	code, errorType, parseFailed := service.ResolveOpsProviderErrorFields(entry.UpstreamErrors)
+	entry.ProviderErrorCode = code
+	entry.ProviderErrorType = errorType
+	if parseFailed {
+		log.Printf("[OpsErrorLogger] provider_error_parse_status=failed request_id=%s", entry.RequestID)
 	}
 }
 
@@ -794,6 +806,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 				}
 			}
 
+			populateOpsProviderErrorFields(entry)
 			enqueueOpsErrorLog(ops, entry)
 			return
 		}
@@ -995,6 +1008,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 		}
 
+		populateOpsProviderErrorFields(entry)
 		enqueueOpsErrorLog(ops, entry)
 	}
 }
