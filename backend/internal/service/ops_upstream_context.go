@@ -15,6 +15,7 @@ const (
 	OpsUpstreamErrorMessageKey = "ops_upstream_error_message"
 	OpsUpstreamErrorDetailKey  = "ops_upstream_error_detail"
 	OpsUpstreamErrorsKey       = "ops_upstream_errors"
+	OpsUpstreamModelKey        = "ops_upstream_model"
 
 	// Optional stage latencies (milliseconds) for troubleshooting and alerting.
 	OpsAuthLatencyMsKey      = "ops_auth_latency_ms"
@@ -46,6 +47,15 @@ const (
 	OpsClientBusinessLimitedReasonLocalFeatureGate       = "local_feature_gate"
 	OpsClientBusinessLimitedReasonLocalPolicyDenied      = "local_policy_denied"
 )
+
+func SetOpsUpstreamModel(c *gin.Context, model string) {
+	if c == nil {
+		return
+	}
+	if model = strings.TrimSpace(model); model != "" {
+		c.Set(OpsUpstreamModelKey, model)
+	}
+}
 
 func MarkResponseCommitted(c *gin.Context) { c.Set(ResponseCommittedKey, true) }
 
@@ -137,8 +147,35 @@ type OpsUpstreamErrorEvent struct {
 	// Kind: http_error | request_error | retry_exhausted | failover
 	Kind string `json:"kind,omitempty"`
 
-	Message string `json:"message,omitempty"`
-	Detail  string `json:"detail,omitempty"`
+	Message           string `json:"message,omitempty"`
+	ProviderErrorCode string `json:"provider_error_code,omitempty"`
+	ProviderErrorType string `json:"provider_error_type,omitempty"`
+	Detail            string `json:"detail,omitempty"`
+
+	SemanticOutputStarted bool   `json:"semantic_output_started,omitempty"`
+	PreludeFlushed        bool   `json:"prelude_flushed,omitempty"`
+	SafeToFailover        bool   `json:"safe_to_failover,omitempty"`
+	AttemptInputTokens    int    `json:"attempt_input_tokens,omitempty"`
+	AttemptOutputTokens   int    `json:"attempt_output_tokens,omitempty"`
+	AttemptOutcome        string `json:"attempt_outcome,omitempty"`
+}
+
+func sanitizeUpstreamErrorIdentifier(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	var b strings.Builder
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' || r == ':' {
+			b.WriteRune(r)
+		}
+		if b.Len() >= 64 {
+			break
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
@@ -154,6 +191,9 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	ev.Kind = strings.TrimSpace(ev.Kind)
 	ev.UpstreamURL = strings.TrimSpace(ev.UpstreamURL)
 	ev.Message = strings.TrimSpace(ev.Message)
+	ev.ProviderErrorCode = sanitizeUpstreamErrorIdentifier(ev.ProviderErrorCode)
+	ev.ProviderErrorType = sanitizeUpstreamErrorIdentifier(ev.ProviderErrorType)
+	ev.AttemptOutcome = sanitizeUpstreamErrorIdentifier(ev.AttemptOutcome)
 	ev.Detail = strings.TrimSpace(ev.Detail)
 	if ev.Message != "" {
 		ev.Message = sanitizeUpstreamErrorMessage(ev.Message)
@@ -171,6 +211,56 @@ func appendOpsUpstreamError(c *gin.Context, ev OpsUpstreamErrorEvent) {
 	c.Set(OpsUpstreamErrorsKey, existing)
 
 	checkSkipMonitoringForUpstreamEvent(c, &evCopy)
+}
+
+func markLastOpenAICapacityFailoverAttempt(
+	c *gin.Context,
+	semanticOutputStarted bool,
+	preludeFlushed bool,
+	usage *OpenAIUsage,
+) {
+	if c == nil {
+		return
+	}
+	v, ok := c.Get(OpsUpstreamErrorsKey)
+	if !ok {
+		return
+	}
+	events, ok := v.([]*OpsUpstreamErrorEvent)
+	if !ok || len(events) == 0 || events[len(events)-1] == nil {
+		return
+	}
+	event := events[len(events)-1]
+	event.SemanticOutputStarted = semanticOutputStarted
+	event.PreludeFlushed = preludeFlushed
+	event.SafeToFailover = true
+	event.AttemptOutcome = "retrying"
+	if usage != nil {
+		event.AttemptInputTokens = usage.InputTokens
+		event.AttemptOutputTokens = usage.OutputTokens
+	}
+}
+
+// MarkOpenAICapacityFailoverOutcome finalizes all capacity attempts attached to
+// the request after the handler knows whether the transparent retry recovered.
+func MarkOpenAICapacityFailoverOutcome(c *gin.Context, outcome string) {
+	if c == nil {
+		return
+	}
+	v, ok := c.Get(OpsUpstreamErrorsKey)
+	if !ok {
+		return
+	}
+	events, ok := v.([]*OpsUpstreamErrorEvent)
+	if !ok {
+		return
+	}
+	outcome = sanitizeUpstreamErrorIdentifier(outcome)
+	for _, event := range events {
+		if event != nil && event.SafeToFailover {
+			event.AttemptOutcome = outcome
+		}
+	}
 }
 
 // checkSkipMonitoringForUpstreamEvent checks whether the upstream error event
@@ -225,6 +315,72 @@ func ParseOpsUpstreamErrors(raw string) ([]*OpsUpstreamErrorEvent, error) {
 		return nil, err
 	}
 	return out, nil
+}
+
+// ResolveOpsProviderErrorFields promotes provider code/type from the newest
+// useful attempt. Detail accepts either a JSON object or a JSON-encoded string.
+func ResolveOpsProviderErrorFields(events []*OpsUpstreamErrorEvent) (code, errorType string, parseFailed bool) {
+	for i := len(events) - 1; i >= 0; i-- {
+		event := events[i]
+		if event == nil {
+			continue
+		}
+		code = sanitizeUpstreamErrorIdentifier(event.ProviderErrorCode)
+		errorType = sanitizeUpstreamErrorIdentifier(event.ProviderErrorType)
+		if code != "" || errorType != "" {
+			return code, errorType, false
+		}
+		for _, raw := range []string{event.Detail, event.UpstreamResponseBody} {
+			raw = strings.TrimSpace(raw)
+			if raw == "" {
+				continue
+			}
+			parsedCode, parsedType, ok := parseOpsProviderErrorJSON(raw)
+			if !ok {
+				parseFailed = true
+				continue
+			}
+			code = sanitizeUpstreamErrorIdentifier(parsedCode)
+			errorType = sanitizeUpstreamErrorIdentifier(parsedType)
+			if code != "" || errorType != "" {
+				return code, errorType, parseFailed
+			}
+		}
+	}
+	return "", "", parseFailed
+}
+
+func parseOpsProviderErrorJSON(raw string) (code, errorType string, ok bool) {
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return "", "", false
+	}
+	for depth := 0; depth < 2; depth++ {
+		encoded, isString := value.(string)
+		if !isString {
+			break
+		}
+		if err := json.Unmarshal([]byte(strings.TrimSpace(encoded)), &value); err != nil {
+			return "", "", false
+		}
+	}
+	root, isObject := value.(map[string]any)
+	if !isObject {
+		return "", "", true
+	}
+	if response, ok := root["response"].(map[string]any); ok {
+		if providerErr, ok := response["error"].(map[string]any); ok {
+			code, _ = providerErr["code"].(string)
+			errorType, _ = providerErr["type"].(string)
+		}
+	}
+	if code == "" && errorType == "" {
+		if providerErr, ok := root["error"].(map[string]any); ok {
+			code, _ = providerErr["code"].(string)
+			errorType, _ = providerErr["type"].(string)
+		}
+	}
+	return code, errorType, true
 }
 
 // safeUpstreamURL returns scheme + host + path from a URL, stripping query/fragment
