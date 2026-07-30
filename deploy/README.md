@@ -371,20 +371,30 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
 
 ### Release Verification Gate
 
-Every manually installed production binary must pass the release gate after
-the service is restarted. Run it on the build/operator host (it requires Go and
-curl), using the exact local artifact whose SHA-256 matches the installed
-binary. The command fails if the artifact was not built with the embedded
-frontend, or if any required API/SPA route is unavailable:
+Every manually installed production binary must pass the release gate
+immediately after the service is restarted. Run it on the unit host (it requires
+Go and curl) so it can inspect the installed binary and test the unit directly.
+Pass the release artifact's expected SHA-256; a mismatch fails the gate:
 
 ```bash
-./deploy/verify-release.sh ./artifacts/sub2api https://sub2api.example.com
+./deploy/verify-release.sh \
+  --expected-sha 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef \
+  --unit-url http://127.0.0.1:8080 \
+  --public-url https://sub2api.example.com \
+  /opt/sub2api/sub2api
 ```
 
-For a private endpoint with a self-signed certificate, add `--insecure`. A
-release is not complete unless all required checks pass: the `embed` build-tag
-assertion, the artifact SHA-256 readback, `/health` 200, `/v1/models` 401, `/`
-200, and `/keys` 200. The two SPA routes must also return `text/html`.
+For a private endpoint with a self-signed certificate, add `--insecure`. If only
+one surface is reachable, provide only that URL; the output explicitly marks the
+other surface as `SKIP`, so it cannot be mistaken for full coverage. A release
+is not complete unless the installed binary's `embed` build tag and SHA-256
+match, and both required surfaces pass `/health` 200, `/v1/models` 401, `/` 200,
+and `/keys` 200. The two SPA routes must also return `text/html`.
+
+This gate is part of the install transaction, not a review-only checklist: run
+it after installation and restart, and restore the backed-up binary immediately
+if it fails. The four route checks have been independently negative-tested, but
+that test harness is not currently stored in this repository.
 
 ### Commands
 
