@@ -210,7 +210,10 @@ gateway:
   # 超时请求可能已产生上游用量；切换账号重试可能导致上游重复计费。
   # Pre-output attempt staging is capped at 8 MiB; overflow fails over without exposing partial SSE data.
   # 首次输出前的单次尝试暂存上限为 8 MiB；溢出时切号且不暴露不完整 SSE 数据。
-  openai_first_output_timeout_seconds: 0
+  # fork 自有默认 300（上游默认 0=禁用）。0 会导致上游不吐首字节时无限忙等。
+  # ⚠️ 上游已把旧键名 gateway.openai_first_output_timeout 改为本键；viper 静默忽略旧键，
+  # 升级时若 config 里仍写旧键，该配置不会生效。
+  openai_first_output_timeout_seconds: 300
   # Optional high/xhigh/max override (seconds, 0=use the standard timeout)
   openai_high_effort_first_output_timeout_seconds: 0
   # Max request body size in bytes (default: 256MB)

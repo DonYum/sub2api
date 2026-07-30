@@ -365,12 +365,17 @@ func TestLoadDefaultSchedulingConfig(t *testing.T) {
 	}
 }
 
-func TestLoadDefaultOpenAIFirstOutputTimeoutsDisabled(t *testing.T) {
+// TestLoadDefaultOpenAIFirstOutputTimeouts 锁本 fork 的有意偏离：
+// 上游 0.1.168 默认 openai_first_output_timeout_seconds=0（禁用），本 fork 默认 300 秒，
+// 避免上游不吐首字节时无限忙等（task #98 决策点 A，@yunfeng 2026-07-31 拍板）。
+// high-effort 覆盖值仍保持上游默认 0（=回退到标准超时）。
+func TestLoadDefaultOpenAIFirstOutputTimeouts(t *testing.T) {
 	resetViperWithJWTSecret(t)
 
 	cfg, err := Load()
 	require.NoError(t, err)
-	require.Zero(t, cfg.Gateway.OpenAIFirstOutputTimeoutSeconds)
+	require.Equal(t, 300, cfg.Gateway.OpenAIFirstOutputTimeoutSeconds,
+		"fork 默认必须是 300 秒，不得回落到上游的 0（禁用）")
 	require.Zero(t, cfg.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds)
 }
 

@@ -2206,7 +2206,11 @@ func setDefaults() {
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
-	viper.SetDefault("gateway.openai_first_output_timeout_seconds", 0)
+	// fork 自有默认：上游默认 0（=禁用首字节超时），本 fork 要求 300 秒，避免请求在
+	// 上游不吐首字节时无限忙等（task #98 决策点 A，@yunfeng 2026-07-31 拍板）。
+	// ⚠️ 上游把键名从 gateway.openai_first_output_timeout 改成了
+	// ...timeout_seconds，viper 会静默忽略旧键，因此不能靠线上 config 里的旧键继续生效。
+	viper.SetDefault("gateway.openai_first_output_timeout_seconds", 300)
 	viper.SetDefault("gateway.openai_high_effort_first_output_timeout_seconds", 0)
 	viper.SetDefault("gateway.log_upstream_error_body", true)
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
