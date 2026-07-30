@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -47,6 +48,35 @@ func TestAccount_IsOpenAIPassthroughEnabled(t *testing.T) {
 		}
 		require.False(t, account.IsOpenAIPassthroughEnabled())
 	})
+}
+
+func TestOpenAIPassthroughResidualModelMappingDoesNotRestrictRouting(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       map[string]any{"openai_passthrough": true},
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-5.6-luna": "gpt-5.6-luna"},
+		},
+	}
+	req := OpenAIAccountScheduleRequest{RequestedModel: "gpt-5.6-sol"}
+
+	withoutPassthrough := *account
+	withoutPassthrough.Extra = map[string]any{"openai_passthrough": false}
+	require.False(t, withoutPassthrough.IsModelSupported(req.RequestedModel), "test fixture must preserve the residual mapping mismatch")
+	require.True(t, account.IsModelSupported(req.RequestedModel))
+	require.True(t, (&defaultOpenAIAccountScheduler{}).isAccountRequestCompatible(context.Background(), account, req))
+	require.True(t, isOpenAICompatibleAccountEligibleForRequest(context.Background(), account, PlatformOpenAI, req.RequestedModel, false, ""))
+
+	account.Extra["openai_passthrough"] = false
+	require.False(t, account.IsModelSupported(req.RequestedModel))
+	require.False(t, (&defaultOpenAIAccountScheduler{}).isAccountRequestCompatible(context.Background(), account, req))
+	require.False(t, isOpenAICompatibleAccountEligibleForRequest(context.Background(), account, PlatformOpenAI, req.RequestedModel, false, ""))
+
+	account.Credentials = map[string]any{}
+	require.True(t, account.IsModelSupported(req.RequestedModel))
 }
 
 func TestAccount_IsOpenAIOAuthPassthroughEnabled(t *testing.T) {

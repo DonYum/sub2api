@@ -233,7 +233,25 @@ func TestOpenAICapacityPrecommitRetryUsesIndependentTotalBudget(t *testing.T) {
 	require.False(t, openAICapacityPrecommitRetryWithinBudget(time.Now().Add(-61*time.Second)))
 	require.False(t, openAICapacityPrecommitRetryWithinBudget(time.Time{}))
 	require.True(t, shouldRetryOpenAICapacityPrecommit(time.Now(), 0))
-	require.False(t, shouldRetryOpenAICapacityPrecommit(time.Now(), 1), "capacity precommit permits at most one retry")
+	require.True(t, shouldRetryOpenAICapacityPrecommit(time.Now(), 1))
+	require.True(t, shouldRetryOpenAICapacityPrecommit(time.Now(), 2))
+	require.False(t, shouldRetryOpenAICapacityPrecommit(time.Now(), 3), "precommit retry permits at most three account switches")
+}
+
+func TestOpenAICapacityPrecommitRetryRequiresDistinctAccounts(t *testing.T) {
+	startedAt := time.Now()
+	retriedAccountIDs := make(map[int64]struct{})
+	retries := 0
+
+	require.True(t, claimOpenAICapacityPrecommitRetry(startedAt, retries, 8, retriedAccountIDs))
+	retries++
+	require.False(t, claimOpenAICapacityPrecommitRetry(startedAt, retries, 8, retriedAccountIDs), "the same account must not consume another retry")
+	require.True(t, claimOpenAICapacityPrecommitRetry(startedAt, retries, 11, retriedAccountIDs))
+	retries++
+	require.True(t, claimOpenAICapacityPrecommitRetry(startedAt, retries, 13, retriedAccountIDs))
+	retries++
+	require.False(t, claimOpenAICapacityPrecommitRetry(startedAt, retries, 14, retriedAccountIDs), "the fourth account switch must exceed the retry limit")
+	require.False(t, claimOpenAICapacityPrecommitRetry(startedAt.Add(-61*time.Second), 0, 15, make(map[int64]struct{})), "an expired total budget must block the first retry")
 }
 
 func TestOpenAICapacityExhaustionAfterKeepaliveWritesResponsesSSE(t *testing.T) {

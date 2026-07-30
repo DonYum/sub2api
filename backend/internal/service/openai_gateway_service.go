@@ -2703,8 +2703,9 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if passthroughEnabled {
 		// 透传分支只需要轻量提取字段，避免热路径全量 Unmarshal。
 		reasoningEffort := extractOpenAIReasoningEffortFromBody(body, reqModel)
-		// 国产模型默认 effort 补充：也要用 mappedModel 判定是否是 passback-required 上游。
-		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, account.GetMappedModel(reqModel))
+		// 自动透传会原样发送 reqModel；协议判定必须使用同一个模型名，
+		// 不能让残留的常规模型映射改变或注入请求参数。
+		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, reqModel)
 		return s.forwardOpenAIPassthrough(ctx, c, account, originalBody, reqModel, reasoningEffort, reqStream, startTime)
 	}
 
@@ -4111,8 +4112,14 @@ func openAIStreamSafeFailoverPreludeReason(payload []byte, eventType string) str
 		return ""
 	}
 	message := extractOpenAISSEErrorMessage(payload)
+	if isOpenAIContextWindowError(message, payload) {
+		return ""
+	}
 	if openAIStreamFailedEventIsCapacity(payload, message) {
 		return "capacity"
+	}
+	if openAIStreamFailedEventHasNonRetryableMarker(payload, message) {
+		return ""
 	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return "transient"
@@ -4135,14 +4142,21 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	if isOpenAIContextWindowError(message, payload) {
 		return false
 	}
+	if openAIStreamFailedEventIsCapacity(payload, message) {
+		return true
+	}
+	if openAIStreamFailedEventHasNonRetryableMarker(payload, message) {
+		return false
+	}
 	if isOpenAITransientProcessingError(http.StatusBadRequest, message, payload) {
 		return true
 	}
+	return true
+}
+
+func openAIStreamFailedEventHasNonRetryableMarker(payload []byte, message string) bool {
 	code, errType := openAIStreamProviderErrorFields(payload)
 	combined := strings.ToLower(strings.TrimSpace(message + " " + code + " " + errType))
-	if combined == "" {
-		return true
-	}
 	nonRetryableMarkers := []string{
 		"invalid_request",
 		"content_policy",
@@ -4154,10 +4168,10 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 	}
 	for _, marker := range nonRetryableMarkers {
 		if strings.Contains(combined, marker) {
-			return false
+			return true
 		}
 	}
-	return true
+	return false
 }
 
 func openAIStreamFailedEventIsCapacity(payload []byte, message string) bool {
