@@ -4093,6 +4093,7 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 	payload []byte,
 	message string,
 ) string {
+	providerErrorCode, providerErrorType := openAIStreamProviderErrorFields(payload)
 	message = sanitizeUpstreamErrorMessage(strings.TrimSpace(message))
 	if message == "" {
 		message = "OpenAI upstream response failed"
@@ -4114,6 +4115,8 @@ func (s *OpenAIGatewayService) recordOpenAIStreamUpstreamError(
 			Passthrough:        passthrough,
 			Kind:               kind,
 			Message:            message,
+			ProviderErrorCode:  providerErrorCode,
+			ProviderErrorType:  providerErrorType,
 			Detail:             detail,
 		}
 		if account != nil {
@@ -4268,7 +4271,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				failoverErr := s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
 				failoverErr.SafeToFailoverAfterWrite = true
 				markLastOpenAICapacityFailoverAttempt(c, false, false, usage)
-				return failoverErr
+				return resultWithUsage(), failoverErr
 			}
 			if eventType == "response.failed" {
 				failedMessage = extractOpenAISSEErrorMessage(dataBytes)
@@ -4302,7 +4305,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 						failoverErr := s.newOpenAIStreamFailoverError(c, account, true, upstreamRequestID, dataBytes, failedMessage)
 						failoverErr.SafeToFailoverAfterWrite = true
 						markLastOpenAICapacityFailoverAttempt(c, false, false, usage)
-						return failoverErr
+						return resultWithUsage(), failoverErr
 					}
 					failedMessage = s.recordOpenAIStreamUpstreamError(c, account, true, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
 				} else if !openAIStreamClientOutputStarted(c, clientOutputStarted) && openAIStreamFailedEventShouldFailover(dataBytes, failedMessage) {

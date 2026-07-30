@@ -78,17 +78,6 @@ func claimOpenAICapacityPrecommitRetry(startedAt time.Time, retries int, account
 	return true
 }
 
-func updateOpenAIFailoverPriorityFloorForError(
-	priorityFloor *int,
-	failedAccount *service.Account,
-	failoverErr *service.UpstreamFailoverError,
-) *int {
-	if failoverErr != nil && failoverErr.SafeToFailoverAfterWrite {
-		return priorityFloor
-	}
-	return updateOpenAIFailoverPriorityFloor(priorityFloor, failedAccount)
-}
-
 func openAIModelMappedBody(body []byte, mapped bool, mappedModel string, replace openAIModelBodyReplaceFunc) []byte {
 	if !mapped || replace == nil {
 		return body
