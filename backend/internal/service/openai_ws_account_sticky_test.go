@@ -19,7 +19,11 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Hit(t *testing.T
 		Status:      StatusActive,
 		Schedulable: true,
 		Concurrency: 2,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"gpt-5.6-luna": "gpt-5.6-luna"},
+		},
 		Extra: map[string]any{
+			"openai_passthrough":                            true,
 			"openai_apikey_responses_websockets_v2_enabled": true,
 		},
 	}
@@ -37,12 +41,51 @@ func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_Hit(t *testing.T
 
 	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_prev_1", account.ID, time.Hour))
 
-	selection, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_1", "gpt-5.1", nil, false)
+	selection, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_prev_1", "gpt-5.6-sol", nil, false)
 	require.NoError(t, err)
 	require.NotNil(t, selection)
 	require.NotNil(t, selection.Account)
 	require.Equal(t, account.ID, selection.Account.ID)
 	require.True(t, selection.Acquired)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
+func TestOpenAIGatewayService_SelectAccountByPreviousResponseID_DBRuntimeRecheckIgnoresResidualMappingForPassthrough(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(23)
+	newAccount := func() *Account {
+		return &Account{
+			ID: 22, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Status: StatusActive, Schedulable: true, Concurrency: 2,
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.6-luna": "gpt-5.6-luna"}},
+			Extra: map[string]any{
+				"openai_passthrough":                            true,
+				"openai_apikey_responses_websockets_v2_enabled": true,
+			},
+		}
+	}
+	staleAccount := newAccount()
+	dbAccount := *newAccount()
+	cache := &stubGatewayCache{}
+	store := NewOpenAIWSStateStore(cache)
+	svc := &OpenAIGatewayService{
+		accountRepo:        stubOpenAIAccountRepo{accounts: []Account{dbAccount}},
+		cache:              cache,
+		cfg:                newOpenAIWSV2TestConfig(),
+		concurrencyService: NewConcurrencyService(stubConcurrencyCache{}),
+		openaiWSStateStore: store,
+		schedulerSnapshot: &SchedulerSnapshotService{cache: &openAISnapshotCacheStub{
+			accountsByID: map[int64]*Account{staleAccount.ID: staleAccount},
+		}},
+	}
+	require.NoError(t, store.BindResponseAccount(ctx, groupID, "resp_passthrough_mapping", staleAccount.ID, time.Hour))
+
+	selection, err := svc.SelectAccountByPreviousResponseID(ctx, &groupID, "resp_passthrough_mapping", "gpt-5.6-sol", nil, false)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.Equal(t, staleAccount.ID, selection.Account.ID)
 	if selection.ReleaseFunc != nil {
 		selection.ReleaseFunc()
 	}
