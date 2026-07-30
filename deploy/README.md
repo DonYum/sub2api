@@ -369,6 +369,23 @@ curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install
    ```
 5. Open the Setup Wizard in your browser to complete configuration
 
+### Release Verification Gate
+
+Every manually installed production binary must pass the release gate after
+the service is restarted. Run it on the build/operator host (it requires Go and
+curl), using the exact local artifact whose SHA-256 matches the installed
+binary. The command fails if the artifact was not built with the embedded
+frontend, or if any required API/SPA route is unavailable:
+
+```bash
+./deploy/verify-release.sh ./artifacts/sub2api https://sub2api.example.com
+```
+
+For a private endpoint with a self-signed certificate, add `--insecure`. A
+release is not complete unless all required checks pass: the `embed` build-tag
+assertion, the artifact SHA-256 readback, `/health` 200, `/v1/models` 401, `/`
+200, and `/keys` 200. The two SPA routes must also return `text/html`.
+
 ### Commands
 
 ```bash
