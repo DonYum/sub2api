@@ -41,7 +41,8 @@ func (s *OpenAIGatewayService) DiagnoseModelAvailabilityForPlatform(
 		// Mirrors the per-candidate filter used during account selection
 		// (openai_account_scheduler.isAccountRequestCompatible): empty
 		// model_mapping accepts everything; otherwise the explicit / wildcard
-		// mapping must match.
+		// mapping must match. Account.IsModelSupported also implements the
+		// automatic-passthrough override before consulting ordinary mappings.
 		if accounts[i].IsModelSupported(requestedModel) {
 			diag.HasModelSupport = true
 			return diag
