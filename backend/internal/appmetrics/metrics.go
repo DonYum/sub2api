@@ -36,11 +36,23 @@ type ErrorObservation struct {
 	BusinessLimited  bool
 }
 
+type OpenAISelectionObservation struct {
+	Model string
+	Layer string
+}
+
+type OpenAIResponseOutcomeObservation struct {
+	Model   string
+	Outcome string
+}
+
 type Metrics struct {
 	registry           *prometheus.Registry
 	requests           *prometheus.CounterVec
 	upstreamErrors     *prometheus.CounterVec
 	streamTerminations *prometheus.CounterVec
+	openAISelections   *prometheus.CounterVec
+	openAIOutcomes     *prometheus.CounterVec
 	requestDuration    *prometheus.HistogramVec
 	firstOutput        *prometheus.HistogramVec
 	inflightRequests   *prometheus.GaugeVec
@@ -61,6 +73,14 @@ func New() *Metrics {
 			Name: "sub2api_stream_terminations_total",
 			Help: "Observed abnormal stream terminations by bounded reason.",
 		}, []string{"platform", "reason"}),
+		openAISelections: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "sub2api_openai_account_selections_total",
+			Help: "OpenAI Responses account selections by bounded model and scheduler layer.",
+		}, []string{"model", "layer"}),
+		openAIOutcomes: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name: "sub2api_openai_responses_outcomes_total",
+			Help: "OpenAI Responses request outcomes by bounded model and recovery result.",
+		}, []string{"model", "outcome"}),
 		requestDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "sub2api_request_duration_seconds",
 			Help:    "End-to-end duration of successfully accounted gateway requests.",
@@ -82,6 +102,8 @@ func New() *Metrics {
 		m.requests,
 		m.upstreamErrors,
 		m.streamTerminations,
+		m.openAISelections,
+		m.openAIOutcomes,
 		m.requestDuration,
 		m.firstOutput,
 		m.inflightRequests,
@@ -116,6 +138,20 @@ func RecordError(obs ErrorObservation) {
 		return
 	}
 	defaultMetrics.RecordError(obs)
+}
+
+func RecordOpenAISelection(obs OpenAISelectionObservation) {
+	if !defaultEnabled.Load() {
+		return
+	}
+	defaultMetrics.RecordOpenAISelection(obs)
+}
+
+func RecordOpenAIResponseOutcome(obs OpenAIResponseOutcomeObservation) {
+	if !defaultEnabled.Load() {
+		return
+	}
+	defaultMetrics.RecordOpenAIResponseOutcome(obs)
 }
 
 // BeginInFlight records a request that remains active until the returned function is called.
@@ -172,6 +208,20 @@ func (m *Metrics) RecordError(obs ErrorObservation) {
 	if obs.Stream && streamReason != "" {
 		m.streamTerminations.WithLabelValues(platform, streamReason).Inc()
 	}
+}
+
+func (m *Metrics) RecordOpenAISelection(obs OpenAISelectionObservation) {
+	if m == nil {
+		return
+	}
+	m.openAISelections.WithLabelValues(normalizeModel(obs.Model), normalizeOpenAISelectionLayer(obs.Layer)).Inc()
+}
+
+func (m *Metrics) RecordOpenAIResponseOutcome(obs OpenAIResponseOutcomeObservation) {
+	if m == nil {
+		return
+	}
+	m.openAIOutcomes.WithLabelValues(normalizeModel(obs.Model), normalizeOpenAIResponseOutcome(obs.Outcome)).Inc()
 }
 
 func normalizePlatform(value string) string {
@@ -252,6 +302,24 @@ func normalizeModel(value string) string {
 		return "gemini-other"
 	case strings.Contains(model, "grok"):
 		return "grok"
+	default:
+		return "other"
+	}
+}
+
+func normalizeOpenAISelectionLayer(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "previous_response_id", "session_hash", "load_balance":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return "other"
+	}
+}
+
+func normalizeOpenAIResponseOutcome(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "success", "precommit_recovered", "precommit_exhausted", "post_output_failed":
+		return strings.ToLower(strings.TrimSpace(value))
 	default:
 		return "other"
 	}

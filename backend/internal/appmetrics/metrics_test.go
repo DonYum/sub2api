@@ -144,3 +144,16 @@ func TestMetricsTracksInflightRequestsByPlatform(t *testing.T) {
 		t.Fatalf("anthropic inflight after completion = %v, want 0", got)
 	}
 }
+
+func TestMetricsTracksBoundedOpenAISelectionLayersAndOutcomes(t *testing.T) {
+	m := New()
+	m.RecordOpenAISelection(OpenAISelectionObservation{Model: "gpt-5.6-sol-2026-07-private", Layer: "session_hash"})
+	m.RecordOpenAISelection(OpenAISelectionObservation{Model: "customer-private-model", Layer: "future-layer"})
+	m.RecordOpenAIResponseOutcome(OpenAIResponseOutcomeObservation{Model: "gpt-5.6-sol", Outcome: "precommit_recovered"})
+	m.RecordOpenAIResponseOutcome(OpenAIResponseOutcomeObservation{Model: "customer-private-model", Outcome: "future-outcome"})
+
+	require.Equal(t, float64(1), testutil.ToFloat64(m.openAISelections.WithLabelValues("gpt-5.6-sol", "session_hash")))
+	require.Equal(t, float64(1), testutil.ToFloat64(m.openAISelections.WithLabelValues("other", "other")))
+	require.Equal(t, float64(1), testutil.ToFloat64(m.openAIOutcomes.WithLabelValues("gpt-5.6-sol", "precommit_recovered")))
+	require.Equal(t, float64(1), testutil.ToFloat64(m.openAIOutcomes.WithLabelValues("other", "other")))
+}

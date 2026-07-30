@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/appmetrics"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -383,6 +384,22 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var capacityRetryBudgetStartedAt time.Time
 	var lastFailoverErr *service.UpstreamFailoverError
 	var failoverPriorityFloor *int
+	openAIOutcomeRecorded := false
+	recordOpenAIOutcome := func(outcome string) {
+		if openAIOutcomeRecorded {
+			return
+		}
+		appmetrics.RecordOpenAIResponseOutcome(appmetrics.OpenAIResponseOutcomeObservation{
+			Model:   reqModel,
+			Outcome: outcome,
+		})
+		openAIOutcomeRecorded = true
+	}
+	defer func() {
+		if !openAIOutcomeRecorded && capacityPrecommitRetryCount > 0 {
+			recordOpenAIOutcome("precommit_exhausted")
+		}
+	}()
 
 	for {
 		// Select account supporting the requested model
@@ -462,6 +479,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 			return
 		}
+		appmetrics.RecordOpenAISelection(appmetrics.OpenAISelectionObservation{
+			Model: reqModel,
+			Layer: scheduleDecision.Layer,
+		})
 		if capacityPrecommitRetryPending {
 			reqLog.Info("openai.capacity_precommit_retry_selected",
 				zap.Int64("account_id", account.ID),
@@ -526,6 +547,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				var failoverErr *service.UpstreamFailoverError
 				if errors.As(err, &failoverErr) {
 					if !openAIForwardCanFailover(writerSizeBeforeForward, c.Writer.Size(), failoverErr) {
+						recordOpenAIOutcome("post_output_failed")
 						h.handleFailoverExhausted(c, failoverErr, true)
 						return
 					}
@@ -583,6 +605,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, false, nil)
 				upstreamErrorAlreadyCommunicated := openAIForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
+				if reqStream && c.Writer.Size() != writerSizeBeforeForward {
+					recordOpenAIOutcome("post_output_failed")
+				}
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
 					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
@@ -602,6 +627,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			}
 		}
 		if result != nil {
+			if capacityPrecommitRetryCount > 0 {
+				recordOpenAIOutcome("precommit_recovered")
+			} else {
+				recordOpenAIOutcome("success")
+			}
 			service.MarkOpenAICapacityFailoverOutcome(c, "recovered")
 			// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
