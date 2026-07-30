@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math"
+	"net"
 	"net/textproto"
 	"net/url"
 	"os"
@@ -71,6 +72,7 @@ type Config struct {
 	Database                DatabaseConfig                `mapstructure:"database"`
 	Redis                   RedisConfig                   `mapstructure:"redis"`
 	Ops                     OpsConfig                     `mapstructure:"ops"`
+	Metrics                 MetricsConfig                 `mapstructure:"metrics"`
 	JWT                     JWTConfig                     `mapstructure:"jwt"`
 	Totp                    TotpConfig                    `mapstructure:"totp"`
 	WebAuthn                WebAuthnConfig                `mapstructure:"webauthn"`
@@ -1456,6 +1458,12 @@ func (r *RedisConfig) Address() string {
 	return fmt.Sprintf("%s:%d", r.Host, r.Port)
 }
 
+// MetricsConfig 控制独立的 Prometheus 指标端点（loopback-only）。
+type MetricsConfig struct {
+	Enabled    bool   `mapstructure:"enabled"`
+	ListenAddr string `mapstructure:"listen_addr"`
+}
+
 type OpsConfig struct {
 	// Enabled controls whether ops features should run.
 	//
@@ -2113,6 +2121,10 @@ func setDefaults() {
 	// TTL should be slightly larger than collection interval (1m) to maximize cross-replica cache hits.
 	viper.SetDefault("ops.metrics_collector_cache.ttl", 65*time.Second)
 
+	// Metrics (Prometheus exposition, loopback-only)
+	viper.SetDefault("metrics.enabled", false)
+	viper.SetDefault("metrics.listen_addr", "127.0.0.1:19090")
+
 	// JWT
 	viper.SetDefault("jwt.secret", "")
 	viper.SetDefault("jwt.expire_hour", 24)
@@ -2558,6 +2570,9 @@ func (c *Config) Validate() error {
 	}
 	if !c.Log.Output.ToStdout && !c.Log.Output.ToFile {
 		return fmt.Errorf("log.output.to_stdout and log.output.to_file cannot both be false")
+	}
+	if err := validateMetricsConfig(c.Metrics); err != nil {
+		return err
 	}
 	if c.Log.Rotation.MaxSizeMB <= 0 {
 		return fmt.Errorf("log.rotation.max_size_mb must be positive")
@@ -3500,6 +3515,26 @@ func (c *Config) Validate() error {
 	}
 	if err := ValidateDingTalkConfig(c.DingTalk); err != nil {
 		return fmt.Errorf("dingtalk_connect: %w", err)
+	}
+	return nil
+}
+
+// validateMetricsConfig 强制指标端点只能绑定在 loopback，避免把内部指标暴露到公网。
+func validateMetricsConfig(cfg MetricsConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	addr := strings.TrimSpace(cfg.ListenAddr)
+	if addr == "" {
+		return fmt.Errorf("metrics.listen_addr is required when metrics.enabled=true")
+	}
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("metrics.listen_addr must be a valid host:port: %w", err)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return fmt.Errorf("metrics.listen_addr must use a loopback IP")
 	}
 	return nil
 }

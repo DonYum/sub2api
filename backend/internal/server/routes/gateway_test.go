@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/appmetrics"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -342,4 +345,56 @@ func TestGatewayRoutesOpenAICountTokensPathIsRegistered(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
+}
+
+func defaultInflightValue(t *testing.T, platform string) float64 {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	appmetrics.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	prefix := `sub2api_inflight_requests{platform="` + platform + `"} `
+	for _, line := range strings.Split(recorder.Body.String(), "\n") {
+		if strings.HasPrefix(line, prefix) {
+			value, err := strconv.ParseFloat(strings.TrimPrefix(line, prefix), 64)
+			require.NoError(t, err)
+			return value
+		}
+	}
+	return 0
+}
+
+func TestTrackGatewayInFlightUsesAuthenticatedGroupPlatform(t *testing.T) {
+	appmetrics.Enable()
+	baseline := defaultInflightValue(t, service.PlatformOpenAI)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		groupID := int64(1)
+		c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+			GroupID: &groupID,
+			Group:   &service.Group{Platform: service.PlatformOpenAI},
+		})
+		c.Next()
+	})
+	router.Use(trackGatewayInFlight)
+	router.GET("/probe", func(c *gin.Context) {
+		close(entered)
+		<-release
+		c.Status(http.StatusNoContent)
+	})
+
+	go func() {
+		defer close(done)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/probe", nil))
+	}()
+	<-entered
+	require.Equal(t, baseline+1, defaultInflightValue(t, service.PlatformOpenAI))
+	close(release)
+	<-done
+	require.Eventually(t, func() bool {
+		return defaultInflightValue(t, service.PlatformOpenAI) == baseline
+	}, time.Second, 10*time.Millisecond)
 }
