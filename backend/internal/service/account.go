@@ -744,6 +744,12 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
 // 如果未配置 mapping，返回 true（允许所有模型）
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	// 透传模式只替换认证，模型语义交给上游，因此必须在普通
+	// model_mapping 白名单之前放行。账号切换到透传后，credentials
+	// 中可能仍保留旧映射；它不应把透传账号排除出候选池（issue #4936）。
+	if a.IsOpenAIPassthroughEnabled() {
+		return true
+	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
 		return true // 无映射 = 允许所有

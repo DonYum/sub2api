@@ -91,6 +91,27 @@ func TestDiagnoseModelAvailabilityForPlatform_EmptyMappingAllowsAll(t *testing.T
 	require.True(t, diag.HasModelSupport, "empty model_mapping must be treated as 'allow all' (Account.IsModelSupported semantics)")
 }
 
+func TestDiagnoseModelAvailabilityForPlatform_PassthroughIgnoresResidualMapping(t *testing.T) {
+	repo := &mockAccountRepoForPlatform{
+		accounts: []Account{{
+			ID:          1,
+			Platform:    PlatformOpenAI,
+			Status:      StatusActive,
+			Schedulable: true,
+			Extra:       map[string]any{"openai_passthrough": true},
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.6-luna": "gpt-5.6-luna"}},
+		}},
+		accountsByID: map[int64]*Account{},
+	}
+	repo.accountsByID[1] = &repo.accounts[0]
+	svc := &GatewayService{accountRepo: repo, cfg: testConfig()}
+
+	diag := svc.DiagnoseModelAvailabilityForPlatform(context.Background(), nil, "gpt-5.6-sol", PlatformOpenAI)
+
+	require.True(t, diag.HasAccountsInPool)
+	require.True(t, diag.HasModelSupport)
+}
+
 func TestDiagnoseModelAvailabilityForPlatform_WildcardMappingMatches(t *testing.T) {
 	repo := &mockAccountRepoForPlatform{
 		accounts: []Account{
