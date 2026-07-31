@@ -556,6 +556,84 @@ func writeOpenAIPassthroughErrorEnvelope(c *gin.Context, downstreamStatus int, u
 	c.Data(downstreamStatus, "application/json; charset=utf-8", body)
 }
 
+type openAIUpstream4xxDiagnostic struct {
+	Type  string
+	Code  string
+	Param string
+}
+
+func extractOpenAIUpstream4xxDiagnostic(body []byte) openAIUpstream4xxDiagnostic {
+	var envelope struct {
+		Error struct {
+			Type  json.RawMessage `json:"type"`
+			Code  json.RawMessage `json:"code"`
+			Param json.RawMessage `json:"param"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return openAIUpstream4xxDiagnostic{}
+	}
+	return openAIUpstream4xxDiagnostic{
+		Type:  decodeOpenAIUpstreamDiagnosticToken(envelope.Error.Type),
+		Code:  decodeOpenAIUpstreamDiagnosticToken(envelope.Error.Code),
+		Param: decodeOpenAIUpstreamDiagnosticToken(envelope.Error.Param),
+	}
+}
+
+func decodeOpenAIUpstreamDiagnosticToken(raw json.RawMessage) string {
+	if len(raw) == 0 || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		var number json.Number
+		if numberErr := json.Unmarshal(raw, &number); numberErr != nil {
+			return ""
+		}
+		value = number.String()
+	}
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > 128 {
+		return ""
+	}
+	for _, r := range value {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			continue
+		}
+		switch r {
+		case '_', '-', '.', '[', ']', '/', ':':
+			continue
+		default:
+			return ""
+		}
+	}
+	return value
+}
+
+func logOpenAIUpstream4xxDiagnostic(ctx context.Context, account *Account, status int, body []byte) {
+	if status < http.StatusBadRequest || status >= http.StatusInternalServerError {
+		return
+	}
+	diagnostic := extractOpenAIUpstream4xxDiagnostic(body)
+	fields := []zap.Field{
+		zap.String("component", "service.openai_gateway"),
+		zap.Int("upstream_status", status),
+	}
+	if account != nil {
+		fields = append(fields, zap.Int64("account_id", account.ID))
+	}
+	if diagnostic.Type != "" {
+		fields = append(fields, zap.String("upstream_error_type", diagnostic.Type))
+	}
+	if diagnostic.Code != "" {
+		fields = append(fields, zap.String("upstream_error_code", diagnostic.Code))
+	}
+	if diagnostic.Param != "" {
+		fields = append(fields, zap.String("upstream_error_param", diagnostic.Param))
+	}
+	logger.FromContext(ctx).Warn("openai.upstream_4xx_diagnostic", fields...)
+}
+
 func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	ctx context.Context,
 	resp *http.Response,
@@ -565,6 +643,7 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	responseBody []byte,
 ) error {
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
+	logOpenAIUpstream4xxDiagnostic(ctx, account, resp.StatusCode, body)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
@@ -612,6 +691,7 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 ) error {
 	MarkResponseCommitted(c)
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
+	logOpenAIUpstream4xxDiagnostic(ctx, account, resp.StatusCode, body)
 
 	// cyber_policy 仍按原始 body 打内部标记，供 handler 事后写风控/邮件；面向客户端的
 	// 错误体在下方统一重建。cyber 是上游网络安全策略拦截，不冷却账号，
