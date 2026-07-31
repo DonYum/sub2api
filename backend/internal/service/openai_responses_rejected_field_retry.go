@@ -62,6 +62,9 @@ func normalizeOpenAIResponsesRejectedFieldRetryBody(statusCode int, body, respon
 
 	code := strings.ToLower(strings.TrimSpace(extractUpstreamErrorCode(responseBody)))
 	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	if message == "" {
+		message = strings.ToLower(strings.TrimSpace(gjson.GetBytes(responseBody, "detail").String()))
+	}
 	if !isExplicitOpenAIResponsesFieldRejection(code, message) {
 		return nil, "", false, nil
 	}
