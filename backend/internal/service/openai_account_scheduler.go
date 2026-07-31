@@ -827,6 +827,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			candidates = append(candidates, candidate)
 		}
 	}
+	candidates = filterOpenAIHighestPriorityWithCapacity(candidates)
 
 	plan := openAIAccountLoadPlan{
 		allCandidates:             allCandidates,
@@ -981,6 +982,37 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 
 	plan.selectionOrder = s.buildOpenAISelectionOrder(req, plan)
 	return plan
+}
+
+func filterOpenAIHighestPriorityWithCapacity(candidates []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+	minPriority := 0
+	hasAvailable := false
+	for _, candidate := range candidates {
+		if candidate.account == nil || (candidate.loadKnown && candidate.account.Concurrency > 0 &&
+			candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency) {
+			continue
+		}
+		priority := openAIAccountSchedulingPriority(candidate.account)
+		if !hasAvailable || priority < minPriority {
+			minPriority = priority
+			hasAvailable = true
+		}
+	}
+	if !hasAvailable {
+		return candidates
+	}
+
+	filtered := make([]openAIAccountCandidateScore, 0, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.account == nil || (candidate.loadKnown && candidate.account.Concurrency > 0 &&
+			candidate.loadInfo.CurrentConcurrency >= candidate.account.Concurrency) {
+			continue
+		}
+		if openAIAccountSchedulingPriority(candidate.account) == minPriority {
+			filtered = append(filtered, candidate)
+		}
+	}
+	return filtered
 }
 
 func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
