@@ -180,15 +180,33 @@ curl_args=(
   --silent
   --show-error
   --location
+  --noproxy '*'
   --connect-timeout 5
   --max-time 15
-  --retry 2
-  --retry-delay 1
-  --retry-all-errors
 )
 if [[ "$insecure" == true ]]; then
   curl_args+=(--insecure)
 fi
+
+curl_retry() {
+  local attempt=1
+  local max_attempts=3
+  local output rc
+
+  while :; do
+    rc=0
+    output=$(curl "${curl_args[@]}" "$@") || rc=$?
+    if [[ $rc -eq 0 ]]; then
+      printf '%s' "$output"
+      return 0
+    fi
+    if [[ $attempt -ge $max_attempts ]]; then
+      return "$rc"
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+}
 
 check_route() {
   local surface=$1
@@ -198,7 +216,7 @@ check_route() {
   local expected_content_type=${5:-}
   local result status content_type
 
-  result=$(curl "${curl_args[@]}" --output /dev/null \
+  result=$(curl_retry --output /dev/null \
     --write-out $'%{http_code}\t%{content_type}' "${base_url}${path}")
   IFS=$'\t' read -r status content_type <<<"$result"
 
@@ -227,7 +245,7 @@ check_surface() {
 check_metrics() {
   local result metadata body status content_type
 
-  result=$(curl "${curl_args[@]}" \
+  result=$(curl_retry \
     --write-out $'\n%{http_code}\t%{content_type}' "$metrics_url")
   metadata=${result##*$'\n'}
   body=${result%$'\n'*}
