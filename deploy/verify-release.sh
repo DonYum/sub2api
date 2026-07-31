@@ -5,7 +5,8 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage: deploy/verify-release.sh [--insecure] --expected-sha <sha256> \
-       [--unit-url <url>] [--public-url <url>] <installed-binary>
+       [--unit-name <name>] [--unit-url <url>] [--public-url <url>] \
+       [--metrics-url <url>] <installed-binary>
 
 Release gate for a systemd Sub2API deployment. It verifies that the binary was
 built with the embedded frontend and that the live service exposes both API and
@@ -13,16 +14,21 @@ SPA routes.
 
 Options:
   --expected-sha  SHA-256 of the release artifact expected to be installed.
+  --unit-name     systemd unit whose running executable must match the artifact
+                  (default: sub2api.service).
   --unit-url      Direct URL of the systemd unit (for example, localhost).
   --public-url    Public URL served through the production ingress.
+  --metrics-url   Optional Prometheus metrics endpoint to verify.
   --insecure      Pass --insecure to curl (for private/self-signed endpoints).
 EOF
 }
 
 insecure=false
 expected_sha=
+unit_name=sub2api.service
 unit_url=
 public_url=
+metrics_url=
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -46,12 +52,28 @@ while [[ $# -gt 0 ]]; do
       unit_url=${2:-}
       shift 2
       ;;
+    --unit-name)
+      if [[ $# -lt 2 ]]; then
+        echo "FAIL --unit-name requires a value" >&2
+        exit 2
+      fi
+      unit_name=${2:-}
+      shift 2
+      ;;
     --public-url)
       if [[ $# -lt 2 ]]; then
         echo "FAIL --public-url requires a value" >&2
         exit 2
       fi
       public_url=${2:-}
+      shift 2
+      ;;
+    --metrics-url)
+      if [[ $# -lt 2 ]]; then
+        echo "FAIL --metrics-url requires a value" >&2
+        exit 2
+      fi
+      metrics_url=${2:-}
       shift 2
       ;;
     --help|-h)
@@ -78,6 +100,7 @@ binary=$1
 expected_sha=$(printf '%s' "$expected_sha" | tr '[:upper:]' '[:lower:]')
 unit_url=${unit_url%/}
 public_url=${public_url%/}
+metrics_url=${metrics_url%/}
 
 if [[ ! "$expected_sha" =~ ^[[:xdigit:]]{64}$ ]]; then
   echo "FAIL expected SHA-256 must be 64 hexadecimal characters" >&2
@@ -94,8 +117,14 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+if ! command -v systemctl >/dev/null 2>&1; then
+  echo "FAIL systemctl is required to identify the running service" >&2
+  exit 1
+fi
+
 if command -v go >/dev/null 2>&1; then
-  build_tags=$(go version -m "$binary" | awk '$1 == "build" && $2 ~ /^-tags=/ { print $2 }')
+  build_tags=$(go version -m "$binary" 2>/dev/null \
+    | awk '$1 == "build" && $2 ~ /^-tags=/ { print $2 }' || true)
   build_info_source="go version -m"
 else
   build_tags=$(LC_ALL=C grep -a -o 'build.-tags=[[:alnum:]_.,-]*' "$binary" \
@@ -109,19 +138,42 @@ if ! grep -Eq '^-tags=([^,]+,)*embed(,.*)?$' <<<"$build_tags"; then
 fi
 echo "PASS binary build tags include embed (${build_info_source}): $binary"
 
-if command -v sha256sum >/dev/null 2>&1; then
-  binary_sha256=$(sha256sum "$binary" | awk '{print $1}')
-elif command -v shasum >/dev/null 2>&1; then
-  binary_sha256=$(shasum -a 256 "$binary" | awk '{print $1}')
-else
-  echo "FAIL sha256sum or shasum is required to identify the verified binary" >&2
-  exit 1
-fi
+sha256_file() {
+  local path=$1
+
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$path" | awk '{print $1}'
+  elif command -v shasum >/dev/null 2>&1; then
+    shasum -a 256 "$path" | awk '{print $1}'
+  else
+    echo "FAIL sha256sum or shasum is required to identify the verified binary" >&2
+    exit 1
+  fi
+}
+
+binary_sha256=$(sha256_file "$binary")
 if [[ "$binary_sha256" != "$expected_sha" ]]; then
   echo "FAIL installed binary sha256: expected $expected_sha, got $binary_sha256" >&2
   exit 1
 fi
 echo "PASS installed binary sha256 matches expected artifact: $binary_sha256"
+
+main_pid=$(systemctl show --property=MainPID --value "$unit_name" 2>/dev/null || true)
+if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
+  echo "FAIL systemd unit has no running MainPID: $unit_name" >&2
+  exit 1
+fi
+running_exe=/proc/${main_pid}/exe
+if [[ ! -r "$running_exe" ]]; then
+  echo "FAIL running executable is not readable: $running_exe" >&2
+  exit 1
+fi
+running_sha256=$(sha256_file "$running_exe")
+if [[ "$running_sha256" != "$expected_sha" ]]; then
+  echo "FAIL running binary sha256: expected $expected_sha, got $running_sha256" >&2
+  exit 1
+fi
+echo "PASS running $unit_name PID $main_pid matches expected artifact: $running_sha256"
 
 curl_args=(
   --silent
@@ -171,6 +223,31 @@ check_surface() {
   check_route "$surface" "$base_url" "/keys" "200" "text/html"
 }
 
+check_metrics() {
+  local result metadata body status content_type
+
+  result=$(curl "${curl_args[@]}" \
+    --write-out $'\n%{http_code}\t%{content_type}' "$metrics_url")
+  metadata=${result##*$'\n'}
+  body=${result%$'\n'*}
+  IFS=$'\t' read -r status content_type <<<"$metadata"
+
+  if [[ "$status" != "200" ]]; then
+    echo "FAIL metrics: expected HTTP 200, got ${status:-<empty>}" >&2
+    exit 1
+  fi
+  if [[ "$content_type" != "text/plain"* ]]; then
+    echo "FAIL metrics: expected content-type text/plain*, got ${content_type:-<empty>}" >&2
+    exit 1
+  fi
+  if ! grep -Eq '^go_goroutines[[:space:]]' <<<"$body"; then
+    echo "FAIL metrics: go_goroutines is missing" >&2
+    exit 1
+  fi
+
+  echo "PASS metrics: HTTP 200 text/plain with go_goroutines"
+}
+
 if [[ -n "$unit_url" ]]; then
   check_surface "unit" "$unit_url"
 else
@@ -181,6 +258,12 @@ if [[ -n "$public_url" ]]; then
   check_surface "public" "$public_url"
 else
   echo "SKIP public surface: --public-url was not provided"
+fi
+
+if [[ -n "$metrics_url" ]]; then
+  check_metrics
+else
+  echo "SKIP metrics: --metrics-url was not provided"
 fi
 
 if [[ -n "$unit_url" && -n "$public_url" ]]; then
