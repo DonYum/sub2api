@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"sort"
 	"strings"
 
@@ -220,5 +221,29 @@ func logOpenAIConversionShapeDiagnostic(
 		zap.Int("outbound_max_depth", outbound.MaxDepth),
 		zap.Bool("outbound_records_truncated", outbound.Truncated),
 		zap.Strings("outbound_shape", outbound.Records),
+	)
+}
+
+// Temporary incident diagnostic authorized for task #121. It intentionally
+// records full request/converted/upstream-error bodies only on the narrowly
+// scoped Chat Completions -> Responses HTTP 400 path. Remove after diagnosis.
+func logOpenAIConversionRawDiagnostic(
+	accountID int64,
+	inboundBody []byte,
+	outboundBody []byte,
+	upstreamErrorBody []byte,
+	upstreamHeaders http.Header,
+) {
+	logOpenAIConversionShapeDiagnostic(accountID, inboundBody, outboundBody)
+	logger.L().Warn("openai.chat_to_responses_raw_diagnostic",
+		zap.Int64("account_id", accountID),
+		zap.ByteString("inbound_body", inboundBody),
+		zap.ByteString("outbound_body", outboundBody),
+		zap.ByteString("upstream_error_body", upstreamErrorBody),
+		zap.String("x_request_id", upstreamHeaders.Get("x-request-id")),
+		zap.String("request_id", upstreamHeaders.Get("request-id")),
+		zap.String("openai_request_id", upstreamHeaders.Get("openai-request-id")),
+		zap.String("cf_ray", upstreamHeaders.Get("cf-ray")),
+		zap.String("traceparent", upstreamHeaders.Get("traceparent")),
 	)
 }
