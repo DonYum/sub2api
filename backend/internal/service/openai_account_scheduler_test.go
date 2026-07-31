@@ -449,17 +449,20 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledPreempts
 	ctx := context.Background()
 	groupID := int64(10109)
 	accounts := []Account{
-		{ID: 36021, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 5, Priority: 1},
-		{ID: 36022, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 5, Priority: 4},
+		{ID: 36021, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 5, Priority: 1, GroupIDs: []int64{groupID}},
+		{ID: 36022, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 5, Priority: 4, GroupIDs: []int64{groupID}},
 	}
 
 	for _, tt := range []struct {
-		name         string
-		highLoadRate int
-		wantID       int64
+		name                    string
+		highLoadRate            int
+		previousResponseID      string
+		previousResponseCanMove bool
+		wantID                  int64
 	}{
 		{name: "higher priority has capacity", highLoadRate: 20, wantID: 36021},
 		{name: "higher priority is full", highLoadRate: 100, wantID: 36022},
+		{name: "hard previous response continuity", highLoadRate: 20, previousResponseID: "resp_hard_owner", wantID: 36022},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			resetOpenAIAdvancedSchedulerSettingCacheForTest()
@@ -475,9 +478,9 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledPreempts
 					36022: {AccountID: 36022, LoadRate: 0},
 				}}),
 			}
-
-			selection, decision, err := svc.SelectAccountWithScheduler(
-				ctx, &groupID, "", "sticky", "gpt-5.6-sol", nil, OpenAIUpstreamTransportAny, false,
+			selection, decision, err := svc.SelectAccountWithSchedulerForCapability(
+				ctx, &groupID, tt.previousResponseID, "sticky", "gpt-5.6-sol", nil,
+				OpenAIUpstreamTransportAny, "", false, tt.previousResponseCanMove, true,
 			)
 			require.NoError(t, err)
 			require.Equal(t, tt.wantID, selection.Account.ID)
