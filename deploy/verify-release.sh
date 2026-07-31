@@ -158,7 +158,8 @@ if [[ "$binary_sha256" != "$expected_sha" ]]; then
 fi
 echo "PASS installed binary sha256 matches expected artifact: $binary_sha256"
 
-main_pid=$(systemctl show --property=MainPID --value "$unit_name" 2>/dev/null || true)
+main_pid=$(systemctl show --property=MainPID "$unit_name" 2>/dev/null \
+  | sed -n 's/^MainPID=//p' || true)
 if [[ ! "$main_pid" =~ ^[1-9][0-9]*$ ]]; then
   echo "FAIL systemd unit has no running MainPID: $unit_name" >&2
   exit 1
