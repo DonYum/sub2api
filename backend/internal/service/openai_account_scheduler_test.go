@@ -445,6 +445,51 @@ func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledUsesLega
 	require.False(t, decision.StickyPreviousHit)
 }
 
+func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabledPreemptsLowPrioritySticky(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(10109)
+	accounts := []Account{
+		{ID: 36021, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 5, Priority: 1},
+		{ID: 36022, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true, Concurrency: 5, Priority: 4},
+	}
+
+	for _, tt := range []struct {
+		name         string
+		highLoadRate int
+		wantID       int64
+	}{
+		{name: "higher priority has capacity", highLoadRate: 20, wantID: 36021},
+		{name: "higher priority is full", highLoadRate: 100, wantID: 36022},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			resetOpenAIAdvancedSchedulerSettingCacheForTest()
+			cache := &schedulerTestGatewayCache{sessionBindings: map[string]int64{"openai:sticky": 36022}}
+			cfg := &config.Config{}
+			cfg.Gateway.Scheduling.LoadBatchEnabled = true
+			svc := &OpenAIGatewayService{
+				accountRepo: schedulerTestOpenAIAccountRepo{accounts: accounts},
+				cache:       cache,
+				cfg:         cfg,
+				concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{loadMap: map[int64]*AccountLoadInfo{
+					36021: {AccountID: 36021, LoadRate: tt.highLoadRate},
+					36022: {AccountID: 36022, LoadRate: 0},
+				}}),
+			}
+
+			selection, decision, err := svc.SelectAccountWithScheduler(
+				ctx, &groupID, "", "sticky", "gpt-5.6-sol", nil, OpenAIUpstreamTransportAny, false,
+			)
+			require.NoError(t, err)
+			require.Equal(t, tt.wantID, selection.Account.ID)
+			require.Equal(t, openAIAccountScheduleLayerLoadBalance, decision.Layer)
+			require.Equal(t, tt.wantID, cache.sessionBindings["openai:sticky"])
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
+		})
+	}
+}
+
 func TestOpenAIGatewayService_SelectAccountWithScheduler_DefaultDisabled_RequiredWSV2_SkipsHTTPOnlyAccount(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
 
