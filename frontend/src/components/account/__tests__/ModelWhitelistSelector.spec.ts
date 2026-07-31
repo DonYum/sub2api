@@ -1,24 +1,37 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
-const copyToClipboard = vi.fn().mockResolvedValue(true)
+const { copyToClipboard, showError, syncUpstreamModels } = vi.hoisted(() => ({
+  copyToClipboard: vi.fn().mockResolvedValue(true),
+  showError: vi.fn(),
+  syncUpstreamModels: vi.fn()
+}))
 
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => (key === 'common.copy' ? '复制' : key)
+      t: (key: string, params?: Record<string, unknown>) => {
+        if (key === 'common.copy') return '复制'
+        return params?.message ? `${key}: ${params.message}` : key
+      }
     })
   }
 })
 
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
-    showError: vi.fn(),
+    showError,
     showSuccess: vi.fn(),
     showInfo: vi.fn()
   })
+}))
+
+vi.mock('@/api/admin/accounts', () => ({
+  accountsAPI: {
+    syncUpstreamModels
+  }
 }))
 
 vi.mock('@/composables/useClipboard', () => ({
@@ -58,6 +71,8 @@ function findModelRow(wrapper: ReturnType<typeof mountSelector>, modelId: string
 describe('ModelWhitelistSelector', () => {
   beforeEach(() => {
     copyToClipboard.mockClear()
+    showError.mockClear()
+    syncUpstreamModels.mockReset()
   })
 
   it('copies a model ID without selecting the model', async () => {
@@ -85,5 +100,30 @@ describe('ModelWhitelistSelector', () => {
 
     expect(wrapper.emitted('update:modelValue')).toEqual([[['gpt-5.6-sol']]])
     expect(copyToClipboard).not.toHaveBeenCalled()
+  })
+
+  it('shows the API error message when upstream model sync fails', async () => {
+    syncUpstreamModels.mockRejectedValue({ message: 'Upstream returned HTTP 401' })
+    const wrapper = mount(ModelWhitelistSelector, {
+      props: {
+        modelValue: [],
+        platform: 'openai',
+        accountId: 12
+      },
+      global: {
+        stubs: {
+          ModelIcon: true
+        }
+      }
+    })
+
+    const syncButton = wrapper.findAll('button').find(button => button.text().includes('syncUpstreamModels'))
+    expect(syncButton).toBeDefined()
+    await syncButton!.trigger('click')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith(
+      'admin.accounts.syncUpstreamModelsError: Upstream returned HTTP 401'
+    )
   })
 })
