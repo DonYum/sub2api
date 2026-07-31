@@ -333,7 +333,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"in_account_map", func() bool { _, ok := accountByID[stickyAccountID]; return ok }(),
 					"session", shortSessionHash(sessionHash),
 				)
-				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
+				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) &&
+					!hasHigherPriorityGatewayCandidate(routingCandidates, accountByID[stickyAccountID]) {
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
 						var stickyCacheMissReason string
@@ -502,12 +503,44 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
+	// Build the normal load-balance pool before sticky selection so a binding to a
+	// lower-priority account cannot bypass a currently eligible higher-priority tier.
+	candidates := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		acc := &accounts[i]
+		if isExcluded(acc.ID) {
+			continue
+		}
+		if !s.isAccountSchedulableForSelection(acc) {
+			continue
+		}
+		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+			continue
+		}
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			continue
+		}
+		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+			continue
+		}
+		if !s.isAccountSchedulableForQuota(acc) {
+			continue
+		}
+		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+			continue
+		}
+		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		candidates = append(candidates, acc)
+	}
+
 	// ============ Layer 1.5: 粘性会话（仅在无模型路由配置时生效） ============
 	if len(routingAccountIDs) == 0 && sessionHash != "" && stickyAccountID > 0 && !isExcluded(stickyAccountID) {
 		accountID := stickyAccountID
 		if accountID > 0 && !isExcluded(accountID) {
 			account, ok := accountByID[accountID]
-			if ok {
+			if ok && !hasHigherPriorityGatewayCandidate(candidates, account) {
 				// 检查账户是否需要清理粘性会话绑定
 				clearSticky := shouldClearStickySession(account, requestedModel)
 				if clearSticky {
@@ -598,10 +631,16 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 						"session", shortSessionHash(sessionHash),
 					)
 				}
-			} else {
+			} else if !ok {
 				slog.Debug("sticky.layer1_5_no_routing_miss",
 					"account_id", accountID,
 					"reason", "account_not_in_map",
+					"session", shortSessionHash(sessionHash),
+				)
+			} else {
+				slog.Debug("sticky.layer1_5_no_routing_miss",
+					"account_id", accountID,
+					"reason", "higher_priority_candidate",
 					"session", shortSessionHash(sessionHash),
 				)
 			}
@@ -627,42 +666,6 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		"reason", "sticky_not_used_falling_back_to_load_balance",
 		"total_accounts", len(accounts),
 	)
-	candidates := make([]*Account, 0, len(accounts))
-	for i := range accounts {
-		acc := &accounts[i]
-		if isExcluded(acc.ID) {
-			continue
-		}
-		// Scheduler snapshots can be temporarily stale (bucket rebuild is throttled);
-		// re-check schedulability here so recently rate-limited/overloaded accounts
-		// are not selected again before the bucket is rebuilt.
-		if !s.isAccountSchedulableForSelection(acc) {
-			continue
-		}
-		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
-			continue
-		}
-		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
-			continue
-		}
-		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
-			continue
-		}
-		// 配额检查
-		if !s.isAccountSchedulableForQuota(acc) {
-			continue
-		}
-		// 窗口费用检查（非粘性会话路径）
-		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
-			continue
-		}
-		// RPM 检查（非粘性会话路径）
-		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
-			continue
-		}
-		candidates = append(candidates, acc)
-	}
-
 	if len(candidates) == 0 {
 		return nil, ErrNoAvailableAccounts
 	}
@@ -753,6 +756,18 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		})
 	}
 	return nil, ErrNoAvailableAccounts
+}
+
+func hasHigherPriorityGatewayCandidate(candidates []*Account, sticky *Account) bool {
+	if sticky == nil {
+		return false
+	}
+	for _, candidate := range candidates {
+		if candidate != nil && candidate.ID != sticky.ID && candidate.Priority < sticky.Priority {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *GatewayService) tryAcquireByLegacyOrder(ctx context.Context, candidates []*Account, groupID *int64, sessionHash string, preferOAuth bool) (*AccountSelectionResult, bool, error) {
