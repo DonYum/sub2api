@@ -545,6 +545,18 @@ export default {
       clickToViewBalance: '点击查看充值记录',
       failedToLoadUser: '加载用户信息失败',
       userDeletedBadge: '已删除',
+      rawMessages: {
+        filter: '原始报文',
+        all: '全部调用',
+        only: '仅有原文',
+        download: '下载原文',
+        downloadFailed: '原文下载失败',
+        cleanup: '清理原文',
+        none: '当前筛选范围没有原文记录',
+        cleanupConfirm: '将清理 {count} 条原文（约 {size} MiB），不删除计费使用记录。是否继续？',
+        cleanupSuccess: '已清理 {count} 条，该范围剩余 {remaining} 条，文件操作失败 {failed} 条',
+        cleanupFailed: '清理原文失败'
+      },
       tokenRanking: {
         subtitle: '按当前筛选与时间范围统计每个用户的 Token 用量',
         rowHint: '点击查看该用户的用量明细',

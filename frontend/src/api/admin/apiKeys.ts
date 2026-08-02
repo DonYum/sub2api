@@ -26,8 +26,16 @@ export async function updateApiKeyGroup(id: number, groupId: number | null): Pro
   return data
 }
 
+export async function setRawMessageRecording(id: number, enabled: boolean): Promise<UpdateApiKeyGroupResult> {
+  const { data } = await apiClient.put<UpdateApiKeyGroupResult>(`/admin/api-keys/${id}`, {
+    raw_message_recording_enabled: enabled
+  })
+  return data
+}
+
 export const apiKeysAPI = {
-  updateApiKeyGroup
+  updateApiKeyGroup,
+  setRawMessageRecording
 }
 
 export default apiKeysAPI

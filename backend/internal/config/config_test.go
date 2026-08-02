@@ -637,6 +637,17 @@ func TestLoadDefaultIdempotencyConfig(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultRawMessageStorageConfig(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.False(t, cfg.RawMessageStorage.Enabled)
+	require.Equal(t, int64(16<<20), cfg.RawMessageStorage.MaxRequestBytes)
+	require.Equal(t, int64(16<<20), cfg.RawMessageStorage.MaxResponseBytes)
+	require.Equal(t, int64(5<<30), cfg.RawMessageStorage.MinFreeBytes)
+}
+
 func TestLoadDefaultBatchImageQueueDisabled(t *testing.T) {
 	resetViperWithJWTSecret(t)
 

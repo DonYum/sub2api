@@ -186,9 +186,13 @@ func ProvideHandlers(
 	modelPlazaHandler *ModelPlazaHandler,
 	asyncImageHandler *AsyncImageHandler,
 	batchImageHandler *BatchImageHandler,
+	rawMessageService *service.RawMessageService,
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
+	if adminHandlers != nil && adminHandlers.Usage != nil {
+		adminHandlers.Usage.SetRawMessageService(rawMessageService)
+	}
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,
@@ -210,6 +214,7 @@ func ProvideHandlers(
 		ModelPlaza:       modelPlazaHandler,
 		AsyncImage:       asyncImageHandler,
 		BatchImage:       batchImageHandler,
+		RawMessage:       rawMessageService,
 	}
 }
 

@@ -73,7 +73,8 @@ type APIKeyUpdateFields struct {
 	// 仅供"重置限流用量"路径声明；常规计费走 IncrementRateLimitUsage。
 	RateLimitUsage bool
 	// IPRules 覆盖 ip_whitelist 与 ip_blacklist。
-	IPRules bool
+	IPRules                    bool
+	RawMessageRecordingEnabled bool
 }
 
 // IsEmpty 报告该次 Update 是否不写任何列。

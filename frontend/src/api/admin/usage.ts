@@ -90,6 +90,25 @@ export interface AdminUsageQueryParams extends UsageQueryParams {
   error_phase?: string | null
   error_category?: string | null
   status_code?: number | null
+  raw_message_only?: boolean | null
+}
+
+export interface RawMessageCleanupFilter {
+  api_key_id?: number
+  start_time?: string
+  end_time?: string
+}
+
+export interface RawMessageCleanupPreview {
+  records: number
+  stored_bytes: number
+}
+
+export interface RawMessageCleanupResult {
+  deleted_records: number
+  deleted_bytes: number
+  failed_records: number
+  remaining_records: number
 }
 
 // ==================== API Functions ====================
@@ -204,6 +223,21 @@ export async function cancelCleanupTask(taskId: number): Promise<{ id: number; s
   return data
 }
 
+export async function downloadRawMessage(usageId: number): Promise<Blob> {
+  const { data } = await apiClient.get<Blob>(`/admin/usage/${usageId}/raw-message`, { responseType: 'blob' })
+  return data
+}
+
+export async function previewRawMessageCleanup(params: RawMessageCleanupFilter): Promise<RawMessageCleanupPreview> {
+  const { data } = await apiClient.get<RawMessageCleanupPreview>('/admin/usage/raw-messages/cleanup-preview', { params })
+  return data
+}
+
+export async function cleanupRawMessages(payload: RawMessageCleanupFilter): Promise<RawMessageCleanupResult> {
+  const { data } = await apiClient.delete<RawMessageCleanupResult>('/admin/usage/raw-messages', { data: payload })
+  return data
+}
+
 export const adminUsageAPI = {
   list,
   getStats,
@@ -211,7 +245,10 @@ export const adminUsageAPI = {
   searchApiKeys,
   listCleanupTasks,
   createCleanupTask,
-  cancelCleanupTask
+  cancelCleanupTask,
+  downloadRawMessage,
+  previewRawMessageCleanup,
+  cleanupRawMessages
 }
 
 export default adminUsageAPI

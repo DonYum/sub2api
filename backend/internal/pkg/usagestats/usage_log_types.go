@@ -281,7 +281,8 @@ type UsageLogFilters struct {
 	StartTime         *time.Time
 	EndTime           *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
-	ExactTotal bool
+	ExactTotal     bool
+	RawMessageOnly bool
 }
 
 // UsageStats represents usage statistics

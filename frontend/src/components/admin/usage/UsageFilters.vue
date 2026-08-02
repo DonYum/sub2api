@@ -139,6 +139,11 @@
           <Select v-model="filters.billing_mode" :options="billingModeOptions" @change="emitChange" />
         </div>
 
+        <div v-if="mode === 'usage'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('admin.usage.rawMessages.filter') }}</label>
+          <Select v-model="filters.raw_message_only" :options="rawMessageOptions" @change="emitChange" />
+        </div>
+
         <!-- Error Phase Filter (errors only) -->
         <div v-if="mode === 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
           <label class="input-label">{{ t('admin.ops.errorLog.type') }}</label>
@@ -175,6 +180,9 @@
         </button>
         <slot name="after-reset" />
         <template v-if="mode === 'usage'">
+          <button type="button" @click="$emit('rawCleanup')" class="btn btn-secondary">
+            {{ t('admin.usage.rawMessages.cleanup') }}
+          </button>
           <button type="button" @click="$emit('cleanup')" class="btn btn-danger">
             {{ t('admin.usage.cleanup.button') }}
           </button>
@@ -224,7 +232,8 @@ const emit = defineEmits([
   'refresh',
   'reset',
   'export',
-  'cleanup'
+  'cleanup',
+  'rawCleanup'
 ])
 
 const { t } = useI18n()
@@ -305,6 +314,11 @@ const billingModeOptions = ref<SelectOption[]>([
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') },
   { value: 'image', label: t('admin.usage.billingModeImage') },
   { value: 'video', label: t('admin.usage.billingModeVideo') }
+])
+
+const rawMessageOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.usage.rawMessages.all') },
+  { value: true, label: t('admin.usage.rawMessages.only') }
 ])
 
 const emitChange = () => emit('change')

@@ -95,6 +95,11 @@ func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 }
 
+// RawMessageRecordingEnabled applies equality check predicate on the "raw_message_recording_enabled" field. It's identical to RawMessageRecordingEnabledEQ.
+func RawMessageRecordingEnabled(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldRawMessageRecordingEnabled, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -533,6 +538,16 @@ func StatusEqualFold(v string) predicate.APIKey {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// RawMessageRecordingEnabledEQ applies the EQ predicate on the "raw_message_recording_enabled" field.
+func RawMessageRecordingEnabledEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldRawMessageRecordingEnabled, v))
+}
+
+// RawMessageRecordingEnabledNEQ applies the NEQ predicate on the "raw_message_recording_enabled" field.
+func RawMessageRecordingEnabledNEQ(v bool) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldRawMessageRecordingEnabled, v))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

@@ -83,7 +83,7 @@
           </button>
         </div>
 
-        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @rawCleanup="cleanupRawMessages" @export="exportToExcel">
           <template #after-reset>
             <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
@@ -132,6 +132,7 @@
             @sort="handleSort"
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
+            @rawDownloadFailed="handleRawDownloadFailed"
           />
           <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
         </div>
@@ -233,6 +234,40 @@ let statsReqSeq = 0
 let modelStatsReqSeq = 0
 const exportProgress = reactive({ show: false, progress: 0, current: 0, total: 0, estimatedTime: '' })
 const cleanupDialogVisible = ref(false)
+
+const rawCleanupFilter = () => {
+  const start = new Date(`${filters.value.start_date || startDate.value}T00:00:00`)
+  const end = new Date(`${filters.value.end_date || endDate.value}T00:00:00`)
+  end.setDate(end.getDate() + 1)
+  return {
+    api_key_id: filters.value.api_key_id,
+    start_time: start.toISOString(),
+    end_time: end.toISOString()
+  }
+}
+
+const cleanupRawMessages = async () => {
+  try {
+    const filter = rawCleanupFilter()
+    const preview = await adminUsageAPI.previewRawMessageCleanup(filter)
+    if (preview.records === 0) {
+      appStore.showSuccess(t('admin.usage.rawMessages.none'))
+      return
+    }
+    const size = (preview.stored_bytes / 1024 / 1024).toFixed(2)
+    if (!window.confirm(t('admin.usage.rawMessages.cleanupConfirm', { count: preview.records, size }))) return
+    const result = await adminUsageAPI.cleanupRawMessages(filter)
+    appStore.showSuccess(t('admin.usage.rawMessages.cleanupSuccess', {
+      count: result.deleted_records,
+      remaining: result.remaining_records,
+      failed: result.failed_records
+    }))
+    await loadLogs()
+  } catch (error) {
+    console.error('Failed to clean raw messages:', error)
+    appStore.showError(t('admin.usage.rawMessages.cleanupFailed'))
+  }
+}
 // Balance history modal state
 const showBalanceHistoryModal = ref(false)
 const balanceHistoryUser = ref<AdminUser | null>(null)
@@ -552,6 +587,9 @@ const handleSort = (key: string, order: 'asc' | 'desc') => {
 
 const handleIpGeoBatchFailed = () => {
   appStore.showError(t('usage.ipGeo.batchFailed'))
+}
+const handleRawDownloadFailed = () => {
+  appStore.showError(t('admin.usage.rawMessages.downloadFailed'))
 }
 const cancelExport = () => exportAbortController?.abort()
 const openCleanupDialog = () => { cleanupDialogVisible.value = true }

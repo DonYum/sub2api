@@ -665,6 +665,9 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.GET("/cleanup-tasks", h.Admin.Usage.ListCleanupTasks)
 		usage.POST("/cleanup-tasks", h.Admin.Usage.CreateCleanupTask)
 		usage.POST("/cleanup-tasks/:id/cancel", h.Admin.Usage.CancelCleanupTask)
+		usage.GET("/raw-messages/cleanup-preview", h.Admin.Usage.PreviewRawMessageCleanup)
+		usage.DELETE("/raw-messages", h.Admin.Usage.CleanupRawMessages)
+		usage.GET("/:id/raw-message", h.Admin.Usage.DownloadRawMessage)
 	}
 }
 

@@ -131,10 +131,11 @@ func (s *userRepoStubForGroupUpdate) RemoveGroupFromUserAllowedGroups(context.Co
 
 // apiKeyRepoStubForGroupUpdate implements APIKeyRepository for AdminUpdateAPIKeyGroupID tests.
 type apiKeyRepoStubForGroupUpdate struct {
-	key       *APIKey
-	getErr    error
-	updateErr error
-	updated   *APIKey // captures what was passed to Update
+	key           *APIKey
+	getErr        error
+	updateErr     error
+	updated       *APIKey // captures what was passed to Update
+	updatedFields APIKeyUpdateFields
 }
 
 func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*APIKey, error) {
@@ -144,12 +145,13 @@ func (s *apiKeyRepoStubForGroupUpdate) GetByID(_ context.Context, _ int64) (*API
 	clone := *s.key
 	return &clone, nil
 }
-func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, _ APIKeyUpdateFields) error {
+func (s *apiKeyRepoStubForGroupUpdate) Update(_ context.Context, key *APIKey, fields APIKeyUpdateFields) error {
 	if s.updateErr != nil {
 		return s.updateErr
 	}
 	clone := *key
 	s.updated = &clone
+	s.updatedFields = fields
 	return nil
 }
 
@@ -564,4 +566,27 @@ func TestAdminService_AdminUpdateAPIKeyGroupID_Unbind_NoAllowedGroupUpdate(t *te
 	// 解绑时不修改 allowed_groups
 	require.False(t, userRepo.addGroupCalled)
 	require.False(t, got.AutoGrantedGroupAccess)
+}
+
+func TestAdminService_AdminSetAPIKeyRawMessageRecording(t *testing.T) {
+	repo := &apiKeyRepoStubForGroupUpdate{key: &APIKey{ID: 1, Key: "sk-test"}}
+	cache := &authCacheInvalidatorStub{}
+	svc := &adminServiceImpl{apiKeyRepo: repo, authCacheInvalidator: cache}
+
+	got, err := svc.AdminSetAPIKeyRawMessageRecording(context.Background(), 1, true)
+	require.NoError(t, err)
+	require.True(t, got.RawMessageRecordingEnabled)
+	require.NotNil(t, repo.updated)
+	require.True(t, repo.updatedFields.RawMessageRecordingEnabled)
+	require.Equal(t, []string{"sk-test"}, cache.keys)
+}
+
+func TestAdminService_AdminSetAPIKeyRawMessageRecording_Idempotent(t *testing.T) {
+	repo := &apiKeyRepoStubForGroupUpdate{key: &APIKey{ID: 1, Key: "sk-test", RawMessageRecordingEnabled: true}}
+	svc := &adminServiceImpl{apiKeyRepo: repo}
+
+	got, err := svc.AdminSetAPIKeyRawMessageRecording(context.Background(), 1, true)
+	require.NoError(t, err)
+	require.True(t, got.RawMessageRecordingEnabled)
+	require.Nil(t, repo.updated)
 }

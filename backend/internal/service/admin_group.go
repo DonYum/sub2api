@@ -1115,6 +1115,28 @@ func (s *adminServiceImpl) AdminUpdateAPIKeyGroupID(ctx context.Context, keyID i
 	return result, nil
 }
 
+// AdminSetAPIKeyRawMessageRecording changes the admin-only capture gate for an
+// API key. Ordinary API-key create/update endpoints intentionally do not expose
+// this field, so users cannot opt themselves in and consume capture storage.
+func (s *adminServiceImpl) AdminSetAPIKeyRawMessageRecording(ctx context.Context, keyID int64, enabled bool) (*APIKey, error) {
+	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)
+	if err != nil {
+		return nil, err
+	}
+	if apiKey.RawMessageRecordingEnabled == enabled {
+		return apiKey, nil
+	}
+
+	apiKey.RawMessageRecordingEnabled = enabled
+	if err := s.apiKeyRepo.Update(ctx, apiKey, APIKeyUpdateFields{RawMessageRecordingEnabled: true}); err != nil {
+		return nil, fmt.Errorf("update raw message recording gate: %w", err)
+	}
+	if s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, apiKey.Key)
+	}
+	return apiKey, nil
+}
+
 // AdminResetAPIKeyRateLimitUsage resets all API key rate-limit usage windows.
 func (s *adminServiceImpl) AdminResetAPIKeyRateLimitUsage(ctx context.Context, keyID int64) (*APIKey, error) {
 	apiKey, err := s.apiKeyRepo.GetByID(ctx, keyID)

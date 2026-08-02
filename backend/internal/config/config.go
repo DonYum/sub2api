@@ -101,6 +101,18 @@ type Config struct {
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
+	RawMessageStorage       RawMessageStorageConfig       `mapstructure:"raw_message_storage"`
+}
+
+// RawMessageStorageConfig controls the file-backed store used by explicitly
+// opted-in API keys. Authentication headers are never passed to this store;
+// only the response Content-Type is retained as allowlisted metadata.
+type RawMessageStorageConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	DataDir          string `mapstructure:"data_dir"`
+	MaxRequestBytes  int64  `mapstructure:"max_request_bytes"`
+	MaxResponseBytes int64  `mapstructure:"max_response_bytes"`
+	MinFreeBytes     int64  `mapstructure:"min_free_bytes"`
 }
 
 type LogConfig struct {
@@ -2106,6 +2118,14 @@ func setDefaults() {
 	viper.SetDefault("image_storage.access_key_id", "")
 	viper.SetDefault("image_storage.secret_access_key", "")
 	viper.SetDefault("image_storage.public_base_url", "")
+
+	// Raw gateway message storage. Per-key recording remains default-off even
+	// when the store is enabled.
+	viper.SetDefault("raw_message_storage.enabled", false)
+	viper.SetDefault("raw_message_storage.data_dir", "./data/raw-messages")
+	viper.SetDefault("raw_message_storage.max_request_bytes", 16777216)
+	viper.SetDefault("raw_message_storage.max_response_bytes", 16777216)
+	viper.SetDefault("raw_message_storage.min_free_bytes", 5368709120)
 
 	// Ops (vNext)
 	viper.SetDefault("ops.enabled", true)

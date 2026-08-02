@@ -1300,3 +1300,17 @@ image_storage:
   presign_expiry_hours: 24
   # 当上游返回的是图片 url 时，下载该图片再转存的字节上限（默认 32MB）
   max_download_bytes: 33554432
+# Raw request/response body capture. Both this global kill switch and an
+# admin-managed per-key switch must be enabled. Put the dedicated directory on
+# a protected data volume in production. Authentication/request headers are
+# never stored; response Content-Type is the only allowlisted header metadata.
+# Files are gzip-compressed but not application-encrypted; filesystem/volume
+# protection is the encryption boundary. Cleanup is explicit by API key and/or
+# time range; there is no automatic retention job in this release.
+raw_message_storage:
+  enabled: false
+  data_dir: ./data/raw-messages
+  max_request_bytes: 16777216
+  max_response_bytes: 16777216
+  # Stop starting new captures before the data volume reaches critical free space.
+  min_free_bytes: 5368709120

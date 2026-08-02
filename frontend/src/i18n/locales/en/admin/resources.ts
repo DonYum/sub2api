@@ -548,6 +548,18 @@ export default {
       clickToViewBalance: 'Click to view balance history',
       failedToLoadUser: 'Failed to load user info',
       userDeletedBadge: 'Deleted',
+      rawMessages: {
+        filter: 'Raw messages',
+        all: 'All calls',
+        only: 'Raw only',
+        download: 'Download raw',
+        downloadFailed: 'Failed to download raw message',
+        cleanup: 'Clean raw',
+        none: 'No raw messages match the current filters',
+        cleanupConfirm: 'Delete {count} raw message records (about {size} MiB) without deleting billing usage records?',
+        cleanupSuccess: 'Deleted {count}; {remaining} remain in this range; {failed} file operations failed',
+        cleanupFailed: 'Failed to clean raw messages'
+      },
       tokenRanking: {
         subtitle: 'Per-user token usage for the current filters and time range',
         rowHint: "Click to view this user's usage details",

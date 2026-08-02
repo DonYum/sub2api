@@ -54,6 +54,7 @@ func (r *apiKeyRepository) Create(ctx context.Context, key *service.APIKey) erro
 		SetRateLimit5h(key.RateLimit5h).
 		SetRateLimit1d(key.RateLimit1d).
 		SetRateLimit7d(key.RateLimit7d)
+	builder.SetRawMessageRecordingEnabled(key.RawMessageRecordingEnabled)
 
 	if len(key.IPWhitelist) > 0 {
 		builder.SetIPWhitelist(key.IPWhitelist)
@@ -134,6 +135,7 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
+			apikey.FieldRawMessageRecordingEnabled,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -243,6 +245,9 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	}
 	if fields.Status {
 		builder.SetStatus(key.Status)
+	}
+	if fields.RawMessageRecordingEnabled {
+		builder.SetRawMessageRecordingEnabled(key.RawMessageRecordingEnabled)
 	}
 	if fields.Quota {
 		builder.SetQuota(key.Quota)
@@ -853,29 +858,30 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:                         m.ID,
+		UserID:                     m.UserID,
+		Key:                        m.Key,
+		Name:                       m.Name,
+		Status:                     m.Status,
+		RawMessageRecordingEnabled: m.RawMessageRecordingEnabled,
+		IPWhitelist:                m.IPWhitelist,
+		IPBlacklist:                m.IPBlacklist,
+		LastUsedAt:                 m.LastUsedAt,
+		CreatedAt:                  m.CreatedAt,
+		UpdatedAt:                  m.UpdatedAt,
+		GroupID:                    m.GroupID,
+		Quota:                      m.Quota,
+		QuotaUsed:                  m.QuotaUsed,
+		ExpiresAt:                  m.ExpiresAt,
+		RateLimit5h:                m.RateLimit5h,
+		RateLimit1d:                m.RateLimit1d,
+		RateLimit7d:                m.RateLimit7d,
+		Usage5h:                    m.Usage5h,
+		Usage1d:                    m.Usage1d,
+		Usage7d:                    m.Usage7d,
+		Window5hStart:              m.Window5hStart,
+		Window1dStart:              m.Window1dStart,
+		Window7dStart:              m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)

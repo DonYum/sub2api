@@ -135,6 +135,9 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 		conditions = append(conditions, fmt.Sprintf("created_at < $%d", len(args)+1))
 		args = append(args, *filters.EndTime)
 	}
+	if filters.RawMessageOnly {
+		conditions = append(conditions, "EXISTS (SELECT 1 FROM raw_message_records rmr WHERE rmr.request_id = usage_logs.request_id AND rmr.api_key_id = usage_logs.api_key_id)")
+	}
 
 	whereClause := buildWhere(conditions)
 	var (
@@ -162,7 +165,7 @@ func shouldUseFastUsageLogTotal(filters UsageLogFilters) bool {
 		return false
 	}
 	// 强选择过滤下记录集通常较小，保留精确总数。
-	return filters.UserID == 0 && filters.APIKeyID == 0 && filters.AccountID == 0
+	return !filters.RawMessageOnly && filters.UserID == 0 && filters.APIKeyID == 0 && filters.AccountID == 0
 }
 
 func (r *usageLogRepository) listUsageLogsWithPagination(ctx context.Context, whereClause string, args []any, params pagination.PaginationParams) ([]service.UsageLog, *pagination.PaginationResult, error) {

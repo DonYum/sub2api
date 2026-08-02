@@ -43,6 +43,27 @@
               </button>
             </div>
             <div class="flex items-center gap-1"><span>{{ t('admin.users.columns.created') }}: {{ formatDateTime(key.created_at) }}</span></div>
+            <label class="flex items-center gap-2">
+              <span>{{ t('admin.users.rawMessageRecording') }}</span>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="key.raw_message_recording_enabled"
+                :disabled="updatingKeyIds.has(key.id)"
+                :class="[
+                  'relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+                  key.raw_message_recording_enabled ? 'bg-amber-600' : 'bg-gray-200 dark:bg-dark-600'
+                ]"
+                @click="toggleRawMessageRecording(key)"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                    key.raw_message_recording_enabled ? 'translate-x-4' : 'translate-x-0'
+                  ]"
+                />
+              </button>
+            </label>
           </div>
         </div>
       </div>
@@ -221,6 +242,20 @@ const changeGroup = async (key: ApiKey, newGroupId: number | null) => {
     }
   } catch (error: any) {
     appStore.showError(error?.message || t('admin.users.groupChangeFailed'))
+  } finally {
+    updatingKeyIds.value.delete(key.id)
+  }
+}
+
+const toggleRawMessageRecording = async (key: ApiKey) => {
+  updatingKeyIds.value.add(key.id)
+  try {
+    const result = await adminAPI.apiKeys.setRawMessageRecording(key.id, !key.raw_message_recording_enabled)
+    const idx = apiKeys.value.findIndex((item) => item.id === key.id)
+    if (idx !== -1) apiKeys.value[idx] = result.api_key
+    appStore.showSuccess(t('admin.users.rawMessageRecordingUpdated'))
+  } catch (error: any) {
+    appStore.showError(error?.message || t('admin.users.rawMessageRecordingFailed'))
   } finally {
     updatingKeyIds.value.delete(key.id)
   }

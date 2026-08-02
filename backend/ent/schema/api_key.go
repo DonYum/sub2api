@@ -47,6 +47,9 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Bool("raw_message_recording_enabled").
+			Default(false).
+			Comment("Capture raw gateway request/response bodies for this key"),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().

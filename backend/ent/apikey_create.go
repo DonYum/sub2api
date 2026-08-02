@@ -113,6 +113,20 @@ func (_c *APIKeyCreate) SetNillableStatus(v *string) *APIKeyCreate {
 	return _c
 }
 
+// SetRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field.
+func (_c *APIKeyCreate) SetRawMessageRecordingEnabled(v bool) *APIKeyCreate {
+	_c.mutation.SetRawMessageRecordingEnabled(v)
+	return _c
+}
+
+// SetNillableRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableRawMessageRecordingEnabled(v *bool) *APIKeyCreate {
+	if v != nil {
+		_c.SetRawMessageRecordingEnabled(*v)
+	}
+	return _c
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -387,6 +401,10 @@ func (_c *APIKeyCreate) defaults() error {
 		v := apikey.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.RawMessageRecordingEnabled(); !ok {
+		v := apikey.DefaultRawMessageRecordingEnabled
+		_c.mutation.SetRawMessageRecordingEnabled(v)
+	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		v := apikey.DefaultQuota
 		_c.mutation.SetQuota(v)
@@ -456,6 +474,9 @@ func (_c *APIKeyCreate) check() error {
 		if err := apikey.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "APIKey.status": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.RawMessageRecordingEnabled(); !ok {
+		return &ValidationError{Name: "raw_message_recording_enabled", err: errors.New(`ent: missing required field "APIKey.raw_message_recording_enabled"`)}
 	}
 	if _, ok := _c.mutation.Quota(); !ok {
 		return &ValidationError{Name: "quota", err: errors.New(`ent: missing required field "APIKey.quota"`)}
@@ -534,6 +555,10 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.RawMessageRecordingEnabled(); ok {
+		_spec.SetField(apikey.FieldRawMessageRecordingEnabled, field.TypeBool, value)
+		_node.RawMessageRecordingEnabled = value
 	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
@@ -790,6 +815,18 @@ func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldStatus)
+	return u
+}
+
+// SetRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field.
+func (u *APIKeyUpsert) SetRawMessageRecordingEnabled(v bool) *APIKeyUpsert {
+	u.Set(apikey.FieldRawMessageRecordingEnabled, v)
+	return u
+}
+
+// UpdateRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateRawMessageRecordingEnabled() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldRawMessageRecordingEnabled)
 	return u
 }
 
@@ -1217,6 +1254,20 @@ func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field.
+func (u *APIKeyUpsertOne) SetRawMessageRecordingEnabled(v bool) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRawMessageRecordingEnabled(v)
+	})
+}
+
+// UpdateRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateRawMessageRecordingEnabled() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRawMessageRecordingEnabled()
 	})
 }
 
@@ -1855,6 +1906,20 @@ func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field.
+func (u *APIKeyUpsertBulk) SetRawMessageRecordingEnabled(v bool) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetRawMessageRecordingEnabled(v)
+	})
+}
+
+// UpdateRawMessageRecordingEnabled sets the "raw_message_recording_enabled" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateRawMessageRecordingEnabled() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateRawMessageRecordingEnabled()
 	})
 }
 

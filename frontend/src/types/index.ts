@@ -658,6 +658,7 @@ export interface ApiKey {
   name: string
   group_id: number | null
   status: 'active' | 'inactive' | 'quota_exhausted' | 'expired'
+  raw_message_recording_enabled: boolean
   ip_whitelist: string[]
   ip_blacklist: string[]
   last_used_at: string | null
@@ -1599,6 +1600,7 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  has_raw_message?: boolean
   upstream_model?: string | null
   model_mapping_chain?: string | null
 

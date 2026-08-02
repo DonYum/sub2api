@@ -1,8 +1,14 @@
 package admin
 
 import (
+	"archive/zip"
+	"compress/gzip"
 	"context"
+	"fmt"
+	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -21,10 +27,11 @@ import (
 
 // UsageHandler handles admin usage-related requests
 type UsageHandler struct {
-	usageService   *service.UsageService
-	apiKeyService  *service.APIKeyService
-	adminService   service.AdminService
-	cleanupService *service.UsageCleanupService
+	usageService      *service.UsageService
+	apiKeyService     *service.APIKeyService
+	adminService      service.AdminService
+	cleanupService    *service.UsageCleanupService
+	rawMessageService *service.RawMessageService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -39,6 +46,12 @@ func NewUsageHandler(
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+	}
+}
+
+func (h *UsageHandler) SetRawMessageService(rawMessageService *service.RawMessageService) {
+	if h != nil {
+		h.rawMessageService = rawMessageService
 	}
 }
 
@@ -112,6 +125,15 @@ func (h *UsageHandler) List(c *gin.Context) {
 	model := c.Query("model")
 	requestID := strings.TrimSpace(c.Query("request_id"))
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
+	rawMessageOnly := false
+	if raw := strings.TrimSpace(c.Query("raw_message_only")); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid raw_message_only value, use true or false")
+			return
+		}
+		rawMessageOnly = parsed
+	}
 
 	var requestType *int16
 	var stream *bool
@@ -187,6 +209,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		StartTime:         startTime,
 		EndTime:           endTime,
 		ExactTotal:        exactTotal,
+		RawMessageOnly:    rawMessageOnly,
 	}
 
 	records, result, err := h.usageService.ListWithFilters(c.Request.Context(), params, filters)
@@ -195,11 +218,180 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
+	requestIDs := make([]string, 0, len(records))
+	for i := range records {
+		requestIDs = append(requestIDs, records[i].RequestID)
+	}
+	existing := map[string]bool{}
+	if h.rawMessageService != nil {
+		if values, lookupErr := h.rawMessageService.ExistingRequestIDs(c.Request.Context(), requestIDs); lookupErr == nil {
+			existing = values
+		}
+	}
 	out := make([]dto.AdminUsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromServiceAdmin(&records[i]))
+		item := dto.UsageLogFromServiceAdmin(&records[i])
+		item.HasRawMessage = existing[service.RawMessageUsageKey(records[i].RequestID, records[i].APIKeyID)]
+		out = append(out, *item)
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
+}
+
+// DownloadRawMessage downloads one call as a zip with metadata.json,
+// request.body and response.body. It is admin-only through the route group.
+func (h *UsageHandler) DownloadRawMessage(c *gin.Context) {
+	if h.rawMessageService == nil {
+		response.NotFound(c, "Raw message not found")
+		return
+	}
+	usageID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil {
+		response.BadRequest(c, "Invalid usage ID")
+		return
+	}
+	usage, err := h.usageService.GetByID(c.Request.Context(), usageID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	record, err := h.rawMessageService.GetByRequestID(c.Request.Context(), usage.RequestID, usage.APIKeyID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	dir, err := h.rawMessageService.RecordDirectory(record)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	files := []string{"metadata.json", "request.body.gz", "response.body.gz"}
+	for _, name := range files {
+		if _, statErr := os.Stat(filepath.Join(dir, name)); statErr != nil {
+			response.NotFound(c, "Raw message file not found")
+			return
+		}
+	}
+	filename := fmt.Sprintf("usage-%d-raw-message.zip", usageID)
+	c.Header("Content-Type", "application/zip")
+	c.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+	c.Status(http.StatusOK)
+	zw := zip.NewWriter(c.Writer)
+	defer zw.Close()
+	for _, name := range files {
+		src, openErr := os.Open(filepath.Join(dir, name))
+		if openErr != nil {
+			return
+		}
+		archiveName := name
+		var reader io.Reader = src
+		var gzipReader *gzip.Reader
+		if strings.HasSuffix(name, ".gz") {
+			gzipReader, openErr = gzip.NewReader(src)
+			if openErr != nil {
+				_ = src.Close()
+				return
+			}
+			defer gzipReader.Close()
+			archiveName = strings.TrimSuffix(name, ".gz")
+			reader = gzipReader
+		}
+		dst, createErr := zw.Create(archiveName)
+		if createErr == nil {
+			_, createErr = io.Copy(dst, reader)
+		}
+		_ = src.Close()
+		if createErr != nil {
+			return
+		}
+	}
+}
+
+type rawMessageCleanupRequest struct {
+	APIKeyID  int64      `json:"api_key_id"`
+	StartTime *time.Time `json:"start_time"`
+	EndTime   *time.Time `json:"end_time"`
+}
+
+func rawMessageCleanupFilter(apiKeyID int64, startTime, endTime *time.Time) (service.RawMessageCleanupFilter, error) {
+	if apiKeyID <= 0 && startTime == nil && endTime == nil {
+		return service.RawMessageCleanupFilter{}, fmt.Errorf("api_key_id or time range is required")
+	}
+	if startTime != nil && endTime != nil && !startTime.Before(*endTime) {
+		return service.RawMessageCleanupFilter{}, fmt.Errorf("start_time must be before end_time")
+	}
+	return service.RawMessageCleanupFilter{APIKeyID: apiKeyID, StartTime: startTime, EndTime: endTime}, nil
+}
+
+func (h *UsageHandler) PreviewRawMessageCleanup(c *gin.Context) {
+	if h.rawMessageService == nil {
+		response.NotFound(c, "Raw message storage is unavailable")
+		return
+	}
+	var apiKeyID int64
+	if raw := strings.TrimSpace(c.Query("api_key_id")); raw != "" {
+		var err error
+		apiKeyID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			response.BadRequest(c, "Invalid api_key_id")
+			return
+		}
+	}
+	startTime, err := parseOptionalRFC3339(c.Query("start_time"))
+	if err != nil {
+		response.BadRequest(c, "Invalid start_time")
+		return
+	}
+	endTime, err := parseOptionalRFC3339(c.Query("end_time"))
+	if err != nil {
+		response.BadRequest(c, "Invalid end_time")
+		return
+	}
+	filter, err := rawMessageCleanupFilter(apiKeyID, startTime, endTime)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	preview, err := h.rawMessageService.PreviewCleanup(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, preview)
+}
+
+func (h *UsageHandler) CleanupRawMessages(c *gin.Context) {
+	if h.rawMessageService == nil {
+		response.NotFound(c, "Raw message storage is unavailable")
+		return
+	}
+	var req rawMessageCleanupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	filter, err := rawMessageCleanupFilter(req.APIKeyID, req.StartTime, req.EndTime)
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	result, err := h.rawMessageService.Cleanup(c.Request.Context(), filter)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}
+
+func parseOptionalRFC3339(raw string) (*time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return nil, err
+	}
+	return &value, nil
 }
 
 // Stats handles getting usage statistics with filters

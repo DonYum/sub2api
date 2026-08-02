@@ -216,8 +216,13 @@
           </div>
         </template>
 
-        <template #cell-created_at="{ value }">
-          <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
+        <template #cell-created_at="{ value, row }">
+          <div class="space-y-1">
+            <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
+            <button v-if="row.has_raw_message" type="button" :disabled="downloadingRawIds.has(row.id)" class="block text-xs font-medium text-primary-600 hover:underline disabled:cursor-wait disabled:opacity-50 dark:text-primary-400" @click="downloadRaw(row)">
+              {{ t('admin.usage.rawMessages.download') }}
+            </button>
+          </div>
         </template>
 
         <template #cell-user_agent="{ row }">
@@ -513,6 +518,8 @@ import Icon from '@/components/icons/Icon.vue'
 import { fetchBatch, getEntry } from '@/utils/ipGeoLookup'
 import type { AdminUsageLog } from '@/types'
 import type { Column } from '@/components/common/types'
+import { adminUsageAPI } from '@/api/admin/usage'
+import { saveAs } from 'file-saver'
 
 interface Props {
   data: AdminUsageLog[]
@@ -540,11 +547,25 @@ const emit = defineEmits<{
   userClick: [userID: number, email?: string]
   sort: [key: string, order: 'asc' | 'desc']
   ipGeoBatchFailed: []
+  rawDownloadFailed: []
 }>()
 const { t } = useI18n()
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
+const downloadingRawIds = ref(new Set<number>())
+const downloadRaw = async (row: AdminUsageLog) => {
+  downloadingRawIds.value.add(row.id)
+  try {
+    const blob = await adminUsageAPI.downloadRawMessage(row.id)
+    saveAs(blob, `usage-${row.id}-raw-message.zip`)
+  } catch (error) {
+    console.error('Failed to download raw message:', error)
+    emit('rawDownloadFailed')
+  } finally {
+    downloadingRawIds.value.delete(row.id)
+  }
+}
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
 
