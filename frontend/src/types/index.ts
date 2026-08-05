@@ -2014,6 +2014,7 @@ export interface UsageQueryParams {
   stream?: boolean
   billing_type?: number | null
   billing_mode?: string | null
+  reasoning_effort?: string
   start_date?: string
   end_date?: string
   timezone?: string

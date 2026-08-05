@@ -533,6 +533,7 @@ export default {
       failedToLoad: '加载使用记录失败',
       billingType: '计费类型',
       allBillingTypes: '全部计费类型',
+      allReasoningEfforts: '全部推理强度',
       billingTypeBalance: '钱包余额',
       billingTypeSubscription: '订阅套餐',
       billingMode: '计费模式',

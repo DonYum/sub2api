@@ -37,14 +37,15 @@ type dashboardSnapshotV2Response struct {
 }
 
 type dashboardSnapshotV2Filters struct {
-	UserID      int64
-	APIKeyID    int64
-	AccountID   int64
-	GroupID     int64
-	Model       string
-	RequestType *int16
-	Stream      *bool
-	BillingType *int8
+	UserID          int64
+	APIKeyID        int64
+	AccountID       int64
+	GroupID         int64
+	Model           string
+	RequestType     *int16
+	Stream          *bool
+	BillingType     *int8
+	ReasoningEffort string
 }
 
 type dashboardSnapshotV2CacheKey struct {
@@ -59,6 +60,7 @@ type dashboardSnapshotV2CacheKey struct {
 	RequestType       *int16 `json:"request_type"`
 	Stream            *bool  `json:"stream"`
 	BillingType       *int8  `json:"billing_type"`
+	ReasoningEffort   string `json:"reasoning_effort"`
 	IncludeStats      bool   `json:"include_stats"`
 	IncludeTrend      bool   `json:"include_trend"`
 	IncludeModels     bool   `json:"include_models"`
@@ -104,6 +106,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 		RequestType:       filters.RequestType,
 		Stream:            filters.Stream,
 		BillingType:       filters.BillingType,
+		ReasoningEffort:   filters.ReasoningEffort,
 		IncludeStats:      includeStats,
 		IncludeTrend:      includeTrend,
 		IncludeModels:     includeModels,
@@ -184,6 +187,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.RequestType,
 			filters.Stream,
 			filters.BillingType,
+			filters.ReasoningEffort,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get usage trend")
@@ -204,6 +208,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.RequestType,
 			filters.Stream,
 			filters.BillingType,
+			filters.ReasoningEffort,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get model statistics")
@@ -223,6 +228,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 			filters.RequestType,
 			filters.Stream,
 			filters.BillingType,
+			filters.ReasoningEffort,
 		)
 		if err != nil {
 			return nil, errors.New("failed to get group statistics")
@@ -245,6 +251,11 @@ func parseDashboardSnapshotV2Filters(c *gin.Context) (*dashboardSnapshotV2Filter
 	filters := &dashboardSnapshotV2Filters{
 		Model: strings.TrimSpace(c.Query("model")),
 	}
+	reasoningEffort, err := parseReasoningEffortFilter(c.Query("reasoning_effort"))
+	if err != nil {
+		return nil, err
+	}
+	filters.ReasoningEffort = reasoningEffort
 
 	if userIDStr := strings.TrimSpace(c.Query("user_id")); userIDStr != "" {
 		id, err := strconv.ParseInt(userIDStr, 10, 64)

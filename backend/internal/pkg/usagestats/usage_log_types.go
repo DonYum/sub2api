@@ -190,6 +190,8 @@ type UserBreakdownDimension struct {
 	RequestType *int16 // filter by request_type (non-nil to enable)
 	Stream      *bool  // filter by stream flag (non-nil to enable)
 	BillingType *int8  // filter by billing_type (non-nil to enable)
+	// ReasoningEffort filters by the canonical stored reasoning effort value.
+	ReasoningEffort string
 	// SortBy 指定排序列(空 = 默认按 actual_cost)。合法值由 repo 层 allowlist 校验。
 	SortBy string
 }
@@ -278,6 +280,7 @@ type UsageLogFilters struct {
 	Stream            *bool
 	BillingType       *int8
 	BillingMode       string
+	ReasoningEffort   string
 	StartTime         *time.Time
 	EndTime           *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.

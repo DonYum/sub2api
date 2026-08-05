@@ -121,6 +121,7 @@ export async function getStats(params: {
   account_id?: number
   group_id?: number
   model?: string
+  reasoning_effort?: string
   request_type?: UsageRequestType
   stream?: boolean
   period?: string

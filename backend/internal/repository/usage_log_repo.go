@@ -102,6 +102,32 @@ func appendUsageLogBillingModeQueryFilter(query string, args []any, billingMode 
 	return query + " AND " + conditions[0], args
 }
 
+func appendUsageLogReasoningEffortWhereCondition(conditions []string, args []any, reasoningEffort string) ([]string, []any) {
+	return appendUsageLogReasoningEffortWhereConditionWithAlias(conditions, args, reasoningEffort, "")
+}
+
+func appendUsageLogReasoningEffortWhereConditionWithAlias(conditions []string, args []any, reasoningEffort, alias string) ([]string, []any) {
+	effort := strings.TrimSpace(reasoningEffort)
+	if effort == "" {
+		return conditions, args
+	}
+	column := "reasoning_effort"
+	if alias != "" {
+		column = alias + "." + column
+	}
+	conditions = append(conditions, fmt.Sprintf("%s = $%d", column, len(args)+1))
+	args = append(args, effort)
+	return conditions, args
+}
+
+func appendUsageLogReasoningEffortQueryFilter(query string, args []any, reasoningEffort, alias string) (string, []any) {
+	conditions, args := appendUsageLogReasoningEffortWhereConditionWithAlias(nil, args, reasoningEffort, alias)
+	if len(conditions) == 0 {
+		return query, args
+	}
+	return query + " AND " + conditions[0], args
+}
+
 func appendUsageLogModelWhereCondition(conditions []string, args []any, model string, source string) ([]string, []any) {
 	if strings.TrimSpace(source) == "" {
 		return appendRawUsageLogModelWhereCondition(conditions, args, model)

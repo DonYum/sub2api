@@ -23,6 +23,8 @@ const messages: Record<string, string> = {
   'admin.usage.allBillingTypes': 'All Billing Types',
   'admin.usage.billingTypeBalance': 'Balance',
   'admin.usage.billingTypeSubscription': 'Subscription',
+  'usage.reasoningEffort': 'Reasoning Effort',
+  'admin.usage.allReasoningEfforts': 'All Reasoning Efforts',
   'admin.usage.billingMode': 'Billing Mode',
   'admin.usage.allBillingModes': 'All Billing Modes',
   'admin.usage.billingModeToken': 'Token',
@@ -75,6 +77,7 @@ const defaultFilters = () => ({
   request_type: null,
   billing_type: null,
   billing_mode: null,
+  reasoning_effort: null,
   group_id: null,
   start_date: '',
   end_date: '',
@@ -252,5 +255,40 @@ describe('UsageFilters — model options come from prop (no dup request)', () =>
 
     const opts = (wrapper.vm as any).modelOptions as Array<{ value: string | null; label: string }>
     expect(opts.map((o) => o.value)).toEqual([null, 'claude-3', 'gpt-4o'])
+  })
+})
+
+describe('UsageFilters — reasoning effort', () => {
+  it('shows the canonical options in usage mode', () => {
+    const wrapper = mountFilters()
+
+    expect(wrapper.text()).toContain('Reasoning Effort')
+    const options = (wrapper.vm as any).reasoningEffortOptions as Array<{ value: string | null }>
+    expect(options.map((option) => option.value)).toEqual([
+      null,
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ])
+  })
+
+  it('hides the reasoning filter in errors mode', () => {
+    const wrapper = mount(UsageFilters, {
+      props: {
+        modelValue: defaultFilters(),
+        exporting: false,
+        startDate: '2026-05-01',
+        endDate: '2026-05-28',
+        showActions: false,
+        mode: 'errors',
+        modelOptions: [],
+      },
+      global: { stubs: { Select: true, Teleport: true } },
+    })
+
+    expect(wrapper.text()).not.toContain('Reasoning Effort')
   })
 })

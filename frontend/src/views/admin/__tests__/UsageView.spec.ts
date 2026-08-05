@@ -244,6 +244,25 @@ describe('admin UsageView route filters', () => {
     expect(list).toHaveBeenCalledWith(expect.objectContaining({ user_id: 42 }), expect.anything())
     expect(wrapper.find('[data-test="user-filter-label"]').text()).toBe('42')
   })
+
+  it('forwards reasoning effort to the list, summary, and distribution queries', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+    list.mockClear()
+    getStats.mockClear()
+    getModelStats.mockClear()
+    getSnapshotV2.mockClear()
+
+    ;(wrapper.vm as any).filters.reasoning_effort = 'xhigh'
+    ;(wrapper.vm as any).applyFilters()
+    await flushPromises()
+
+    expect(list).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: 'xhigh' }), expect.anything())
+    expect(getStats).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: 'xhigh' }))
+    expect(getModelStats).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: 'xhigh' }))
+    expect(getSnapshotV2).toHaveBeenCalledWith(expect.objectContaining({ reasoning_effort: 'xhigh' }))
+  })
 })
 
 describe('admin UsageView distribution metric toggles', () => {

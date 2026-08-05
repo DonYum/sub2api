@@ -536,6 +536,7 @@ export default {
       failedToLoad: 'Failed to load usage records',
       billingType: 'Billing Type',
       allBillingTypes: 'All Billing Types',
+      allReasoningEfforts: 'All Reasoning Efforts',
       billingTypeBalance: 'Balance',
       billingTypeSubscription: 'Subscription',
       billingMode: 'Billing Mode',

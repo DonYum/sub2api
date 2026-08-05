@@ -200,6 +200,11 @@ func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 	var requestType *int16
 	var stream *bool
 	var billingType *int8
+	reasoningEffort, err := parseReasoningEffortFilter(c.Query("reasoning_effort"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
@@ -250,7 +255,7 @@ func (h *DashboardHandler) GetUsageTrend(c *gin.Context) {
 		}
 	}
 
-	trend, hit, err := h.getUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, billingType)
+	trend, hit, err := h.getUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, userID, apiKeyID, accountID, groupID, model, requestType, stream, billingType, reasoningEffort)
 	if err != nil {
 		response.Error(c, 500, "Failed to get usage trend")
 		return
@@ -277,6 +282,11 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 	var requestType *int16
 	var stream *bool
 	var billingType *int8
+	reasoningEffort, err := parseReasoningEffortFilter(c.Query("reasoning_effort"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
@@ -331,7 +341,7 @@ func (h *DashboardHandler) GetModelStats(c *gin.Context) {
 		}
 	}
 
-	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, modelSource, requestType, stream, billingType)
+	stats, hit, err := h.getModelStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, modelSource, requestType, stream, billingType, reasoningEffort)
 	if err != nil {
 		response.Error(c, 500, "Failed to get model statistics")
 		return
@@ -355,6 +365,11 @@ func (h *DashboardHandler) GetGroupStats(c *gin.Context) {
 	var requestType *int16
 	var stream *bool
 	var billingType *int8
+	reasoningEffort, err := parseReasoningEffortFilter(c.Query("reasoning_effort"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
 
 	if userIDStr := c.Query("user_id"); userIDStr != "" {
 		if id, err := strconv.ParseInt(userIDStr, 10, 64); err == nil {
@@ -402,7 +417,7 @@ func (h *DashboardHandler) GetGroupStats(c *gin.Context) {
 		}
 	}
 
-	stats, hit, err := h.getGroupStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType)
+	stats, hit, err := h.getGroupStatsCached(c.Request.Context(), startTime, endTime, userID, apiKeyID, accountID, groupID, requestType, stream, billingType, reasoningEffort)
 	if err != nil {
 		response.Error(c, 500, "Failed to get group statistics")
 		return
@@ -626,6 +641,12 @@ func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 
 	dim := usagestats.UserBreakdownDimension{}
+	reasoningEffort, err := parseReasoningEffortFilter(c.Query("reasoning_effort"))
+	if err != nil {
+		response.BadRequest(c, err.Error())
+		return
+	}
+	dim.ReasoningEffort = reasoningEffort
 	if v := c.Query("group_id"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			dim.GroupID = id

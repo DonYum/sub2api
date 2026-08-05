@@ -133,6 +133,12 @@
           <Select v-model="filters.billing_type" :options="billingTypeOptions" @change="emitChange" />
         </div>
 
+        <!-- Reasoning Effort Filter (usage/ranking only) -->
+        <div v-if="mode !== 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('usage.reasoningEffort') }}</label>
+          <Select v-model="filters.reasoning_effort" :options="reasoningEffortOptions" @change="emitChange" />
+        </div>
+
         <!-- Billing Mode Filter (usage only；用户排行的 user-breakdown 接口不支持该维度) -->
         <div v-if="mode === 'usage'" class="w-full sm:w-auto sm:min-w-[200px]">
           <label class="input-label">{{ t('admin.usage.billingMode') }}</label>
@@ -273,6 +279,14 @@ const billingTypeOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allBillingTypes') },
   { value: 0, label: t('admin.usage.billingTypeBalance') },
   { value: 1, label: t('admin.usage.billingTypeSubscription') }
+])
+
+const reasoningEffortOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.usage.allReasoningEfforts') },
+  ...['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map((value) => ({
+    value,
+    label: value === 'xhigh' ? 'XHigh' : value.charAt(0).toUpperCase() + value.slice(1)
+  }))
 ])
 
 // 错误类型对应后端 phase 参数(与错误表"类型"徽章同语义)

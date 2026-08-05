@@ -91,6 +91,19 @@ func TestGetUserBreakdown_ModelFilter(t *testing.T) {
 	require.Equal(t, int64(0), repo.capturedDim.GroupID)
 }
 
+func TestGetUserBreakdown_ReasoningEffortFilter(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&reasoning_effort=HIGH", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "high", repo.capturedDim.ReasoningEffort)
+}
+
 func TestGetUserBreakdown_ModelSourceFilter(t *testing.T) {
 	repo := &userBreakdownRepoCapture{}
 	router := newUserBreakdownRouter(repo)
