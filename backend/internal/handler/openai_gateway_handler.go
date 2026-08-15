@@ -157,6 +157,21 @@ func logOpenAICapacityBreakerDecision(reqLog *zap.Logger, message string, accoun
 	reqLog.Warn(message, fields...)
 }
 
+func openAICapacityShedRescueAllowed(decision *service.OpenAICapacityBreakerDecision, rescueUsed bool, switchCount int, maxAccountSwitches int) bool {
+	return decision != nil && decision.Applied && !rescueUsed && maxAccountSwitches > 0 && switchCount < maxAccountSwitches
+}
+
+func logOpenAICapacityShedRescue(reqLog *zap.Logger, message string, accountID int64, switchCount int, maxAccountSwitches int) {
+	if reqLog == nil {
+		return
+	}
+	reqLog.Warn(message,
+		zap.Int64("account_id", accountID),
+		zap.Int("switch_count", switchCount),
+		zap.Int("max_switches", maxAccountSwitches),
+	)
+}
+
 func usageRecordContext(parent context.Context, base context.Context) context.Context {
 	if base == nil {
 		base = context.Background()
@@ -477,6 +492,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	var passthroughFailoverState openAIPassthroughFailoverState
+	capacityShedRescueUsed := false
+	capacityShedRescuePending := false
 
 	// 生图意图的 /v1/responses 请求必须调度到确实支持 Responses API 的账号，否则
 	// 会在 forward 阶段被静默降级为无法生图的 Chat Completions 直转（#4417）。
@@ -566,6 +583,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			zap.Float64("load_skew", scheduleDecision.LoadSkew),
 		)
 		account := selection.Account
+		capacityShedRescueAttempt := capacityShedRescuePending
+		capacityShedRescuePending = false
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
@@ -648,6 +667,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
+					if capacityShedRescueAttempt {
+						if service.IsOpenAICapacityShedFailoverError(failoverErr) {
+							decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, reqModel, failoverErr)
+							logOpenAICapacityBreakerDecision(reqLog, "openai.capacity_shed_rescue_breaker", account.ID, decision)
+						}
+						logOpenAICapacityShedRescue(reqLog, "openai.capacity_shed_rescue_failed", account.ID, switchCount, maxAccountSwitches)
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
@@ -676,6 +704,16 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					if service.IsOpenAICapacityShedFailoverError(failoverErr) {
 						decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, reqModel, failoverErr)
 						logOpenAICapacityBreakerDecision(reqLog, "openai.capacity_shed_no_account_switch", account.ID, decision)
+						if openAICapacityShedRescueAllowed(decision, capacityShedRescueUsed, switchCount, maxAccountSwitches) {
+							h.gatewayService.RecordOpenAIAccountSwitch()
+							failedAccountIDs[account.ID] = struct{}{}
+							lastFailoverErr = failoverErr
+							switchCount++
+							capacityShedRescueUsed = true
+							capacityShedRescuePending = true
+							logOpenAICapacityShedRescue(reqLog, "openai.capacity_shed_rescue_switching", account.ID, switchCount, maxAccountSwitches)
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -735,8 +773,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 			if account.Type == service.AccountTypeOAuth && !account.IsShadow() {
 				h.gatewayService.UpdateCodexUsageSnapshotFromHeaders(c.Request.Context(), account.ID, result.ResponseHeaders)
 			}
+			if capacityShedRescueAttempt {
+				logOpenAICapacityShedRescue(reqLog, "openai.capacity_shed_rescue_succeeded", account.ID, switchCount, maxAccountSwitches)
+			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), result.FirstTokenMs)
 		} else {
+			if capacityShedRescueAttempt {
+				logOpenAICapacityShedRescue(reqLog, "openai.capacity_shed_rescue_succeeded", account.ID, switchCount, maxAccountSwitches)
+			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), openAIForwardSucceededForScheduling(result), nil)
 		}
 
@@ -1058,6 +1102,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
 	effectiveMappedModel := preferredMappedModel
+	capacityShedRescueUsed := false
+	capacityShedRescuePending := false
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
@@ -1122,6 +1168,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			return
 		}
 		account := selection.Account
+		capacityShedRescueAttempt := capacityShedRescuePending
+		capacityShedRescuePending = false
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai_messages.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		_ = scheduleDecision
@@ -1199,6 +1247,15 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
+					if capacityShedRescueAttempt {
+						if service.IsOpenAICapacityShedFailoverError(failoverErr) {
+							decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, currentRoutingModel, failoverErr)
+							logOpenAICapacityBreakerDecision(reqLog, "openai_messages.capacity_shed_rescue_breaker", account.ID, decision)
+						}
+						logOpenAICapacityShedRescue(reqLog, "openai_messages.capacity_shed_rescue_failed", account.ID, switchCount, maxAccountSwitches)
+						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
 					// 池模式：同账号重试
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
@@ -1223,6 +1280,16 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 					if service.IsOpenAICapacityShedFailoverError(failoverErr) {
 						decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, currentRoutingModel, failoverErr)
 						logOpenAICapacityBreakerDecision(reqLog, "openai_messages.capacity_shed_no_account_switch", account.ID, decision)
+						if openAICapacityShedRescueAllowed(decision, capacityShedRescueUsed, switchCount, maxAccountSwitches) {
+							h.gatewayService.RecordOpenAIAccountSwitch()
+							failedAccountIDs[account.ID] = struct{}{}
+							lastFailoverErr = failoverErr
+							switchCount++
+							capacityShedRescueUsed = true
+							capacityShedRescuePending = true
+							logOpenAICapacityShedRescue(reqLog, "openai_messages.capacity_shed_rescue_switching", account.ID, switchCount, maxAccountSwitches)
+							continue
+						}
 						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -1264,8 +1331,14 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			}
 		}
 		if result != nil {
+			if capacityShedRescueAttempt {
+				logOpenAICapacityShedRescue(reqLog, "openai_messages.capacity_shed_rescue_succeeded", account.ID, switchCount, maxAccountSwitches)
+			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(currentRoutingModel), true, result.FirstTokenMs)
 		} else {
+			if capacityShedRescueAttempt {
+				logOpenAICapacityShedRescue(reqLog, "openai_messages.capacity_shed_rescue_succeeded", account.ID, switchCount, maxAccountSwitches)
+			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(currentRoutingModel), true, nil)
 		}
 

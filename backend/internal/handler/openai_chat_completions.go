@@ -147,6 +147,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	sameAccountRetryCount := make(map[int64]int)
 	var lastFailoverErr *service.UpstreamFailoverError
 	var oauth429FailoverState service.OpenAIOAuth429FailoverState
+	capacityShedRescueUsed := false
+	capacityShedRescuePending := false
 
 	// 分组利润控制：chat completions 文本入口请求级装门并固定 pricingAt。
 	ccPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
@@ -205,6 +207,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			return
 		}
 		account := selection.Account
+		capacityShedRescueAttempt := capacityShedRescuePending
+		capacityShedRescuePending = false
 		sessionHash = ensureOpenAIPoolModeSessionHash(sessionHash, account)
 		reqLog.Debug("openai_chat_completions.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		_ = scheduleDecision
@@ -283,6 +287,15 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
+					if capacityShedRescueAttempt {
+						if service.IsOpenAICapacityShedFailoverError(failoverErr) {
+							decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, reqModel, failoverErr)
+							logOpenAICapacityBreakerDecision(reqLog, "openai_chat_completions.capacity_shed_rescue_breaker", account.ID, decision)
+						}
+						logOpenAICapacityShedRescue(reqLog, "openai_chat_completions.capacity_shed_rescue_failed", account.ID, switchCount, maxAccountSwitches)
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
 					// Pool mode: retry on the same account
 					if failoverErr.RetryableOnSameAccount {
 						retryLimit := account.GetPoolModeRetryCount()
@@ -307,6 +320,16 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 					if service.IsOpenAICapacityShedFailoverError(failoverErr) {
 						decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, reqModel, failoverErr)
 						logOpenAICapacityBreakerDecision(reqLog, "openai_chat_completions.capacity_shed_no_account_switch", account.ID, decision)
+						if openAICapacityShedRescueAllowed(decision, capacityShedRescueUsed, switchCount, maxAccountSwitches) {
+							h.gatewayService.RecordOpenAIAccountSwitch()
+							failedAccountIDs[account.ID] = struct{}{}
+							lastFailoverErr = failoverErr
+							switchCount++
+							capacityShedRescueUsed = true
+							capacityShedRescuePending = true
+							logOpenAICapacityShedRescue(reqLog, "openai_chat_completions.capacity_shed_rescue_switching", account.ID, switchCount, maxAccountSwitches)
+							continue
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -349,8 +372,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 			}
 		}
 		if result != nil {
+			if capacityShedRescueAttempt {
+				logOpenAICapacityShedRescue(reqLog, "openai_chat_completions.capacity_shed_rescue_succeeded", account.ID, switchCount, maxAccountSwitches)
+			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, result.FirstTokenMs)
 		} else {
+			if capacityShedRescueAttempt {
+				logOpenAICapacityShedRescue(reqLog, "openai_chat_completions.capacity_shed_rescue_succeeded", account.ID, switchCount, maxAccountSwitches)
+			}
 			h.gatewayService.ReportOpenAIAccountScheduleResult(account.ID, account.GetMappedModel(reqModel), true, nil)
 		}
 

@@ -1811,6 +1811,7 @@ type openAIWSFailoverHandlerAccountRepoStub struct {
 	service.AccountRepository
 	accounts       []service.Account
 	rateLimitedIDs []int64
+	breakerInputs  []service.OpenAICapacityBreakerApplyInput
 }
 
 type openAIHTTPPassthroughFailoverUpstream struct {
@@ -1901,6 +1902,51 @@ func (u *openAIHTTPPassthroughSSERateLimitUpstream) calls() []int64 {
 	return append([]int64(nil), u.accountIDs...)
 }
 
+type openAIHTTPPassthroughCapacityShedRescueUpstream struct {
+	service.HTTPUpstream
+	mu             sync.Mutex
+	accountIDs     []int64
+	capacityShedID map[int64]bool
+}
+
+func (u *openAIHTTPPassthroughCapacityShedRescueUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	u.mu.Lock()
+	u.accountIDs = append(u.accountIDs, accountID)
+	overloaded := u.capacityShedID[accountID]
+	u.mu.Unlock()
+	if overloaded {
+		body := strings.Join([]string{
+			"event: response.failed",
+			`data: {"type":"response.failed","response":{"id":"resp_capacity_shed","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+			"",
+		}, "\n")
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	}
+	body := strings.Join([]string{
+		"event: response.created",
+		`data: {"type":"response.created","response":{"id":"resp_rescued","model":"gpt-5.6-sol"}}`,
+		"",
+		"event: response.completed",
+		`data: {"type":"response.completed","response":{"id":"resp_rescued","model":"gpt-5.6-sol","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}`,
+		"",
+	}, "\n")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
+}
+
+func (u *openAIHTTPPassthroughCapacityShedRescueUpstream) calls() []int64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]int64(nil), u.accountIDs...)
+}
+
 func (s *openAIWSFailoverHandlerAccountRepoStub) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	out := make([]service.Account, 0, len(s.accounts))
 	for _, account := range s.accounts {
@@ -1927,6 +1973,36 @@ func (s *openAIWSFailoverHandlerAccountRepoStub) GetByID(ctx context.Context, id
 		}
 	}
 	return nil, nil
+}
+
+func (s *openAIWSFailoverHandlerAccountRepoStub) ApplyOpenAICapacityBreaker(ctx context.Context, input service.OpenAICapacityBreakerApplyInput) (*service.OpenAICapacityBreakerDecision, error) {
+	s.breakerInputs = append(s.breakerInputs, input)
+	for i := range s.accounts {
+		if s.accounts[i].ID != input.AccountID {
+			continue
+		}
+		if s.accounts[i].Extra == nil {
+			s.accounts[i].Extra = map[string]any{}
+		}
+		limits, _ := s.accounts[i].Extra["model_rate_limits"].(map[string]any)
+		if limits == nil {
+			limits = map[string]any{}
+			s.accounts[i].Extra["model_rate_limits"] = limits
+		}
+		limits[input.Model] = map[string]any{
+			"rate_limited_at":     time.Now().UTC().Format(time.RFC3339),
+			"rate_limit_reset_at": time.Now().Add(30 * time.Minute).UTC().Format(time.RFC3339),
+			"reason":              "openai_capacity_breaker",
+		}
+		break
+	}
+	until := time.Now().Add(30 * time.Minute).UTC()
+	return &service.OpenAICapacityBreakerDecision{
+		Applied:            true,
+		Level:              1,
+		Until:              &until,
+		RemainingPeerCount: len(input.PeerAccountIDs),
+	}, nil
 }
 
 func (s *openAIWSFailoverHandlerAccountRepoStub) SetRateLimited(ctx context.Context, id int64, resetAt time.Time) error {
@@ -2283,6 +2359,156 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 	require.Equal(t, "1", rec.Header().Get("Retry-After"))
 	require.Equal(t, "rate_limit_error", gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
 	require.Equal(t, "Upstream rate limit exceeded, please retry later", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+}
+
+func TestOpenAIResponses_CapacityShedBreakerRescuesWithOneNormalReselection(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(4205)
+	accounts := []service.Account{
+		{
+			ID: 9913, Name: "already-limited", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 0,
+			Credentials: map[string]any{"api_key": "sk-limited", "base_url": "https://api.example.test"},
+			Extra: map[string]any{
+				"openai_passthrough": true,
+				"model_rate_limits": map[string]any{
+					"gpt-5.6-sol": map[string]any{
+						"rate_limit_reset_at": time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+						"reason":              "openai_capacity_breaker",
+					},
+				},
+			},
+		},
+		{
+			ID: 9914, Name: "capacity-shed", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 1,
+			Credentials: map[string]any{
+				"api_key":               "sk-shed",
+				"base_url":              "https://api.example.test",
+				"pool_mode_retry_count": float64(0),
+			},
+			Extra: map[string]any{"openai_passthrough": true},
+		},
+		{
+			ID: 9915, Name: "rescue", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 2,
+			Credentials: map[string]any{"api_key": "sk-rescue", "base_url": "https://api.example.test"},
+			Extra:       map[string]any{"openai_passthrough": true},
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Default.RateMultiplier = 1
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.MaxAccountSwitches = 3
+
+	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accounts}
+	upstream := &openAIHTTPPassthroughCapacityShedRescueUpstream{capacityShedID: map[int64]bool{9914: true}}
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheSvc.Stop)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		accountRepo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+		service.NewBillingService(cfg, nil), nil, billingCacheSvc, upstream,
+		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil,
+	)
+	h := NewOpenAIGatewayHandler(
+		gatewaySvc,
+		service.NewConcurrencyService(nil),
+		billingCacheSvc,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+		nil, nil, nil, nil, cfg,
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID: 1805, GroupID: &groupID,
+		User:  &service.User{ID: 1705, Status: service.StatusActive},
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1705, Concurrency: 0})
+
+	h.Responses(c)
+
+	require.Equal(t, []int64{9914, 9914, 9914, 9914, 9915}, upstream.calls())
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Contains(t, rec.Body.String(), "resp_rescued")
+	require.Len(t, accountRepo.breakerInputs, 1)
+	require.Equal(t, int64(9914), accountRepo.breakerInputs[0].AccountID)
+}
+
+func TestOpenAIResponses_CapacityShedRescueFailureDoesNotChain(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(4206)
+	accounts := []service.Account{
+		{
+			ID: 9916, Name: "capacity-shed", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 1,
+			Credentials: map[string]any{
+				"api_key":               "sk-shed",
+				"base_url":              "https://api.example.test",
+				"pool_mode_retry_count": float64(0),
+			},
+			Extra: map[string]any{"openai_passthrough": true},
+		},
+		{
+			ID: 9917, Name: "rescue-shed", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 2,
+			Credentials: map[string]any{
+				"api_key":               "sk-rescue-shed",
+				"base_url":              "https://api.example.test",
+				"pool_mode_retry_count": float64(0),
+			},
+			Extra: map[string]any{"openai_passthrough": true},
+		},
+		{
+			ID: 9918, Name: "must-not-chain", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 3,
+			Credentials: map[string]any{"api_key": "sk-unused", "base_url": "https://api.example.test"},
+			Extra:       map[string]any{"openai_passthrough": true},
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Default.RateMultiplier = 1
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.MaxAccountSwitches = 3
+
+	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accounts}
+	upstream := &openAIHTTPPassthroughCapacityShedRescueUpstream{capacityShedID: map[int64]bool{9916: true, 9917: true}}
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheSvc.Stop)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		accountRepo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+		service.NewBillingService(cfg, nil), nil, billingCacheSvc, upstream,
+		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil,
+	)
+	h := NewOpenAIGatewayHandler(
+		gatewaySvc,
+		service.NewConcurrencyService(nil),
+		billingCacheSvc,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+		nil, nil, nil, nil, cfg,
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-5.6-sol","input":"hello","stream":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID: 1806, GroupID: &groupID,
+		User:  &service.User{ID: 1706, Status: service.StatusActive},
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1706, Concurrency: 0})
+
+	h.Responses(c)
+
+	require.Equal(t, []int64{9916, 9916, 9916, 9916, 9917}, upstream.calls())
+	require.Equal(t, http.StatusBadGateway, rec.Code)
+	require.Len(t, accountRepo.breakerInputs, 2)
+	require.Equal(t, int64(9916), accountRepo.breakerInputs[0].AccountID)
+	require.Equal(t, int64(9917), accountRepo.breakerInputs[1].AccountID)
 }
 
 func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T) {
