@@ -2252,6 +2252,151 @@ func (r *accountRepository) SetModelRateLimit(ctx context.Context, id int64, sco
 	return nil
 }
 
+func (r *accountRepository) ApplyOpenAICapacityBreaker(ctx context.Context, input service.OpenAICapacityBreakerApplyInput) (*service.OpenAICapacityBreakerDecision, error) {
+	if input.AccountID <= 0 || strings.TrimSpace(input.Model) == "" {
+		return &service.OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "invalid_input"}, nil
+	}
+	input.Now = input.Now.UTC()
+	if input.Now.IsZero() {
+		input.Now = time.Now().UTC()
+	}
+	if len(input.PeerAccountIDs) == 0 {
+		return &service.OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "pool_floor", RemainingPeerCount: 0}, nil
+	}
+	if r.client == nil {
+		return nil, errors.New("account repository client is nil")
+	}
+
+	tx, err := r.client.Tx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	txCtx := dbent.NewTxContext(ctx, tx)
+	client := tx.Client()
+
+	if _, err := client.ExecContext(txCtx, `
+		SELECT pg_advisory_xact_lock(hashtext('openai_capacity_breaker'), hashtext($1::text || ':' || $2::text))
+	`, input.GroupID, input.Model); err != nil {
+		return nil, err
+	}
+
+	var extraRaw string
+	if err := scanSingleRow(txCtx, client, `
+		SELECT COALESCE(extra, '{}'::jsonb)::text
+		FROM accounts
+		WHERE id = $1
+			AND deleted_at IS NULL
+		FOR UPDATE
+	`, []any{input.AccountID}, &extraRaw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, service.ErrAccountNotFound
+		}
+		return nil, err
+	}
+
+	remainingPeers, err := r.countOpenAICapacityBreakerPeers(txCtx, client, input.PeerAccountIDs, input.Model, input.Now)
+	if err != nil {
+		return nil, err
+	}
+	if remainingPeers < 1 {
+		return &service.OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "pool_floor", RemainingPeerCount: remainingPeers}, nil
+	}
+
+	extra := map[string]any{}
+	if strings.TrimSpace(extraRaw) != "" && extraRaw != "null" {
+		if err := json.Unmarshal([]byte(extraRaw), &extra); err != nil {
+			return nil, err
+		}
+	}
+	state := service.OpenAICapacityBreakerStateFromExtra(extra)
+	existing := state.Models[input.Model]
+	next, decision := service.NextOpenAICapacityBreakerState(existing, input.Now, input.StatusCode, input.Message)
+	if decision == nil {
+		return &service.OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "no_decision", RemainingPeerCount: remainingPeers}, nil
+	}
+	decision.RemainingPeerCount = remainingPeers
+	if !decision.Applied {
+		return decision, nil
+	}
+	state.Models[input.Model] = next
+	extra[service.OpenAICapacityBreakerExtraKey] = state
+
+	extraJSON, err := json.Marshal(extra)
+	if err != nil {
+		return nil, err
+	}
+	reason := service.OpenAICapacityBreakerReasonJSON(input, decision)
+
+	if decision.Permanent {
+		_, err = client.ExecContext(txCtx, `
+			UPDATE accounts
+			SET extra = $1::jsonb,
+				schedulable = FALSE,
+				updated_at = NOW()
+			WHERE id = $2
+				AND deleted_at IS NULL
+		`, string(extraJSON), input.AccountID)
+	} else {
+		limitPayload := map[string]string{
+			"rate_limited_at":     input.Now.Format(time.RFC3339),
+			"rate_limit_reset_at": decision.Until.UTC().Format(time.RFC3339),
+			"reason":              reason,
+		}
+		limitJSON, marshalErr := json.Marshal(limitPayload)
+		if marshalErr != nil {
+			return nil, marshalErr
+		}
+		_, err = client.ExecContext(txCtx, `
+			UPDATE accounts
+			SET extra = jsonb_set(
+					jsonb_set($1::jsonb, '{model_rate_limits}'::text[], COALESCE($1::jsonb->'model_rate_limits', '{}'::jsonb), true),
+					ARRAY['model_rate_limits', $2]::text[],
+					$3::jsonb,
+					true
+				),
+				updated_at = NOW()
+			WHERE id = $4
+				AND deleted_at IS NULL
+		`, string(extraJSON), input.Model, string(limitJSON), input.AccountID)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := enqueueSchedulerOutbox(txCtx, client, service.SchedulerOutboxEventAccountChanged, &input.AccountID, nil, nil); err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	r.syncSchedulerAccountSnapshot(ctx, input.AccountID)
+	return decision, nil
+}
+
+func (r *accountRepository) countOpenAICapacityBreakerPeers(ctx context.Context, client *dbent.Client, ids []int64, model string, now time.Time) (int, error) {
+	var count int
+	if err := scanSingleRow(ctx, client, `
+		SELECT COUNT(*)
+		FROM accounts
+		WHERE id = ANY($1)
+			AND deleted_at IS NULL
+			AND status = $2
+			AND platform = $3
+			AND schedulable = TRUE
+			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until <= $4)
+			AND (expires_at IS NULL OR expires_at > $4 OR auto_pause_on_expired = FALSE)
+			AND (overload_until IS NULL OR overload_until <= $4)
+			AND (rate_limit_reset_at IS NULL OR rate_limit_reset_at <= $4)
+			AND NOT (
+				COALESCE(extra->'model_rate_limits', '{}'::jsonb) ? $5
+				AND NULLIF(extra->'model_rate_limits'->$5->>'rate_limit_reset_at', '')::timestamptz > $4
+			)
+	`, []any{pq.Array(ids), service.StatusActive, service.PlatformOpenAI, now, model}, &count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (r *accountRepository) SetOverloaded(ctx context.Context, id int64, until time.Time) error {
 	_, err := r.client.Account.Update().
 		Where(dbaccount.IDEQ(id)).
@@ -2344,10 +2489,11 @@ func (r *accountRepository) ClearTempUnschedulable(ctx context.Context, id int64
 		UPDATE accounts
 		SET temp_unschedulable_until = NULL,
 			temp_unschedulable_reason = NULL,
+			extra = COALESCE(extra, '{}'::jsonb) - $2,
 			updated_at = NOW()
 		WHERE id = $1
 			AND deleted_at IS NULL
-	`, id)
+	`, id, service.OpenAICapacityBreakerExtraKey)
 	if err != nil {
 		return err
 	}
@@ -2403,8 +2549,8 @@ func (r *accountRepository) ClearModelRateLimits(ctx context.Context, id int64) 
 	client := clientFromContext(ctx, r.client)
 	result, err := client.ExecContext(
 		ctx,
-		"UPDATE accounts SET extra = COALESCE(extra, '{}'::jsonb) - 'model_rate_limits', updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
-		id,
+		"UPDATE accounts SET extra = COALESCE(extra, '{}'::jsonb) - 'model_rate_limits' - $2, updated_at = NOW() WHERE id = $1 AND deleted_at IS NULL",
+		id, service.OpenAICapacityBreakerExtraKey,
 	)
 	if err != nil {
 		return err
@@ -2462,10 +2608,23 @@ func (r *accountRepository) UpdateSessionWindowEnd(ctx context.Context, id int64
 }
 
 func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedulable bool) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetSchedulable(schedulable).
-		Save(ctx)
+	var err error
+	if schedulable {
+		client := clientFromContext(ctx, r.client)
+		_, err = client.ExecContext(ctx, `
+			UPDATE accounts
+			SET schedulable = TRUE,
+				extra = COALESCE(extra, '{}'::jsonb) - $2,
+				updated_at = NOW()
+			WHERE id = $1
+				AND deleted_at IS NULL
+		`, id, service.OpenAICapacityBreakerExtraKey)
+	} else {
+		_, err = r.client.Account.Update().
+			Where(dbaccount.IDEQ(id)).
+			SetSchedulable(false).
+			Save(ctx)
+	}
 	if err != nil {
 		return err
 	}

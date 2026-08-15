@@ -161,6 +161,68 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).not.toContain('⚡')
   })
 
+  it('OpenAI capacity breaker 模型限流显示 reason', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 6,
+          platform: 'openai',
+          extra: {
+            model_rate_limits: {
+              'gpt-5.6-sol': {
+                rate_limited_at: '2026-08-16T00:00:00Z',
+                rate_limit_reset_at: '2099-08-16T00:30:00Z',
+                reason: '{"type":"openai_capacity_breaker","level":1}'
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('gpt-5.6-sol')
+    expect(wrapper.text()).toContain('openai_capacity_breaker')
+  })
+
+  it('OpenAI capacity breaker 永久禁用显示管理员提示', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 7,
+          platform: 'openai',
+          schedulable: false,
+          extra: {
+            openai_capacity_breaker: {
+              models: {
+                'gpt-5.6-sol': {
+                  level: 4,
+                  permanent: true,
+                  reason: 'server_is_overloaded',
+                  message: 'Our servers are currently overloaded. Please try again later.',
+                  updated_at: '2026-08-16T00:00:00Z'
+                }
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('CAP')
+    expect(wrapper.text()).toContain('OpenAI capacity breaker')
+    expect(wrapper.text()).toContain('server_is_overloaded')
+  })
+
   it('AICredits key 生效 → 显示积分已用尽 (credits_exhausted)', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

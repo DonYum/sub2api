@@ -137,6 +137,26 @@ func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFu
 	}
 }
 
+func logOpenAICapacityBreakerDecision(reqLog *zap.Logger, message string, accountID int64, decision *service.OpenAICapacityBreakerDecision) {
+	if reqLog == nil {
+		return
+	}
+	fields := []zap.Field{zap.Int64("account_id", accountID)}
+	if decision != nil {
+		fields = append(fields,
+			zap.Bool("breaker_applied", decision.Applied),
+			zap.Bool("breaker_permanent", decision.Permanent),
+			zap.Int("breaker_level", decision.Level),
+			zap.String("breaker_skipped_reason", decision.SkippedReason),
+			zap.Int("remaining_peer_count", decision.RemainingPeerCount),
+		)
+		if decision.Until != nil {
+			fields = append(fields, zap.Time("breaker_until", *decision.Until))
+		}
+	}
+	reqLog.Warn(message, fields...)
+}
+
 func usageRecordContext(parent context.Context, base context.Context) context.Context {
 	if base == nil {
 		base = context.Background()
@@ -652,6 +672,12 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 							}
 							continue
 						}
+					}
+					if service.IsOpenAICapacityShedFailoverError(failoverErr) {
+						decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, reqModel, failoverErr)
+						logOpenAICapacityBreakerDecision(reqLog, "openai.capacity_shed_no_account_switch", account.ID, decision)
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
@@ -1193,6 +1219,12 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 							}
 							continue
 						}
+					}
+					if service.IsOpenAICapacityShedFailoverError(failoverErr) {
+						decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, currentRoutingModel, failoverErr)
+						logOpenAICapacityBreakerDecision(reqLog, "openai_messages.capacity_shed_no_account_switch", account.ID, decision)
+						h.handleAnthropicFailoverExhausted(c, failoverErr, streamStarted)
+						return
 					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}

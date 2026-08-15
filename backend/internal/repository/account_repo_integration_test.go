@@ -5,6 +5,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -1048,6 +1049,148 @@ func (s *AccountRepoSuite) TestClearModelRateLimits_SyncsSchedulerSnapshot() {
 	s.Require().Len(cacheRecorder.setAccounts, 1)
 	s.Require().Equal(account.ID, cacheRecorder.setAccounts[0].ID)
 	s.Require().NotContains(cacheRecorder.setAccounts[0].Extra, "model_rate_limits")
+}
+
+func (s *AccountRepoSuite) TestApplyOpenAICapacityBreaker_ModelLimitAndReset() {
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-openai-capacity"})
+	target := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "acc-openai-capacity-target",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{},
+		Extra:       map[string]any{"model_mapping": map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"}},
+	})
+	peer := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "acc-openai-capacity-peer",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{},
+		Extra:       map[string]any{},
+	})
+	s.Require().NoError(s.repo.BindGroups(s.ctx, target.ID, []int64{group.ID}))
+	s.Require().NoError(s.repo.BindGroups(s.ctx, peer.ID, []int64{group.ID}))
+
+	now := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
+	decision, err := s.repo.ApplyOpenAICapacityBreaker(s.ctx, service.OpenAICapacityBreakerApplyInput{
+		AccountID:      target.ID,
+		GroupID:        group.ID,
+		Model:          "gpt-5.6-sol",
+		Now:            now,
+		StatusCode:     http.StatusServiceUnavailable,
+		Message:        "Our servers are currently overloaded. Please try again later.",
+		PeerAccountIDs: []int64{peer.ID},
+	})
+	s.Require().NoError(err)
+	s.Require().True(decision.Applied)
+	s.Require().Equal(1, decision.Level)
+	s.Require().NotNil(decision.Until)
+
+	got, err := s.repo.GetByID(s.ctx, target.ID)
+	s.Require().NoError(err)
+	breaker := service.OpenAICapacityBreakerStateFromExtra(got.Extra)
+	state := breaker.Models["gpt-5.6-sol"]
+	s.Require().Equal(1, state.Level)
+	s.Require().False(state.Permanent)
+	limits, ok := got.Extra["model_rate_limits"].(map[string]any)
+	s.Require().True(ok)
+	limit, ok := limits["gpt-5.6-sol"].(map[string]any)
+	s.Require().True(ok)
+	reason, ok := limit["reason"].(string)
+	s.Require().True(ok)
+	s.Require().Contains(reason, "openai_capacity_breaker")
+
+	s.Require().NoError(s.repo.ClearModelRateLimits(s.ctx, target.ID))
+	got, err = s.repo.GetByID(s.ctx, target.ID)
+	s.Require().NoError(err)
+	s.Require().NotContains(got.Extra, "model_rate_limits")
+	s.Require().NotContains(got.Extra, service.OpenAICapacityBreakerExtraKey)
+}
+
+func (s *AccountRepoSuite) TestApplyOpenAICapacityBreaker_PermanentSetSchedulableClearsReason() {
+	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-openai-capacity-permanent"})
+	target := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "acc-openai-capacity-permanent-target",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{},
+		Extra:       map[string]any{"model_mapping": map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"}},
+	})
+	peer := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "acc-openai-capacity-permanent-peer",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{},
+		Extra:       map[string]any{},
+	})
+	s.Require().NoError(s.repo.BindGroups(s.ctx, target.ID, []int64{group.ID}))
+	s.Require().NoError(s.repo.BindGroups(s.ctx, peer.ID, []int64{group.ID}))
+
+	start := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
+	var decision *service.OpenAICapacityBreakerDecision
+	for _, at := range []time.Time{
+		start,
+		start.Add(59 * time.Minute),
+		start.Add(120 * time.Minute),
+		start.Add(241 * time.Minute),
+	} {
+		var err error
+		decision, err = s.repo.ApplyOpenAICapacityBreaker(s.ctx, service.OpenAICapacityBreakerApplyInput{
+			AccountID:      target.ID,
+			GroupID:        group.ID,
+			Model:          "gpt-5.6-sol",
+			Now:            at,
+			StatusCode:     http.StatusServiceUnavailable,
+			Message:        "Our servers are currently overloaded. Please try again later.",
+			PeerAccountIDs: []int64{peer.ID},
+		})
+		s.Require().NoError(err)
+		s.Require().True(decision.Applied)
+	}
+	s.Require().True(decision.Permanent)
+
+	got, err := s.repo.GetByID(s.ctx, target.ID)
+	s.Require().NoError(err)
+	s.Require().False(got.Schedulable)
+	s.Require().Contains(got.Extra, service.OpenAICapacityBreakerExtraKey)
+
+	s.Require().NoError(s.repo.SetSchedulable(s.ctx, target.ID, true))
+	got, err = s.repo.GetByID(s.ctx, target.ID)
+	s.Require().NoError(err)
+	s.Require().True(got.Schedulable)
+	s.Require().NotContains(got.Extra, service.OpenAICapacityBreakerExtraKey)
+}
+
+func (s *AccountRepoSuite) TestApplyOpenAICapacityBreaker_PoolFloorSkipsWrite() {
+	target := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name:        "acc-openai-capacity-floor",
+		Platform:    service.PlatformOpenAI,
+		Type:        service.AccountTypeOAuth,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{},
+		Extra:       map[string]any{},
+	})
+	decision, err := s.repo.ApplyOpenAICapacityBreaker(s.ctx, service.OpenAICapacityBreakerApplyInput{
+		AccountID: target.ID,
+		Model:     "gpt-5.6-sol",
+		Now:       time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC),
+	})
+	s.Require().NoError(err)
+	s.Require().False(decision.Applied)
+	s.Require().Equal("pool_floor", decision.SkippedReason)
+
+	got, err := s.repo.GetByID(s.ctx, target.ID)
+	s.Require().NoError(err)
+	s.Require().NotContains(got.Extra, service.OpenAICapacityBreakerExtraKey)
+	s.Require().True(got.Schedulable)
 }
 
 // --- UpdateLastUsed ---

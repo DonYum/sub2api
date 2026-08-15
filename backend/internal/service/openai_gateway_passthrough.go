@@ -1221,13 +1221,20 @@ func (s *OpenAIGatewayService) newOpenAIStreamFailoverError(
 			"message": message,
 		},
 	})
-	return &UpstreamFailoverError{
+	capacityShed := isOpenAIUpstreamCapacityShedEvent(payload)
+	failoverErr := &UpstreamFailoverError{
 		StatusCode:             statusCode,
 		ResponseBody:           body,
 		ResponseHeaders:        headers,
 		RetryableOnSameAccount: openAIStreamFailedEventRetryableOnSameAccount(account, payload, message),
-		RequestScopedTransient: isOpenAIUpstreamCapacityShedEvent(payload),
+		RequestScopedTransient: capacityShed,
+		ClientMessage:          message,
 	}
+	if capacityShed {
+		failoverErr.Reason = GatewayFailureReason("openai_capacity_shed")
+		failoverErr.Scope = GatewayFailureScopeAccount
+	}
+	return failoverErr
 }
 
 func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(

@@ -304,6 +304,12 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 							continue
 						}
 					}
+					if service.IsOpenAICapacityShedFailoverError(failoverErr) {
+						decision := h.gatewayService.RecordOpenAICapacityShed(c.Request.Context(), account, apiKey.GroupID, reqModel, failoverErr)
+						logOpenAICapacityBreakerDecision(reqLog, "openai_chat_completions.capacity_shed_no_account_switch", account.ID, decision)
+						h.handleFailoverExhausted(c, failoverErr, streamStarted)
+						return
+					}
 					h.gatewayService.RecordOpenAIAccountSwitch()
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr

@@ -140,8 +140,73 @@ func TestOpenAIStreamCapacityShedErrorFramePrecedingFailedStillFailsOver(t *test
 	require.ErrorAs(t, err, &failoverErr)
 	require.True(t, failoverErr.RetryableOnSameAccount)
 	require.True(t, failoverErr.RequestScopedTransient)
+	require.True(t, IsOpenAICapacityShedFailoverError(failoverErr))
 	require.False(t, c.Writer.Written())
 	require.Empty(t, rec.Body.String())
+}
+
+func TestOpenAICapacityBreakerStateLadder(t *testing.T) {
+	now := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
+
+	state, decision := NextOpenAICapacityBreakerState(OpenAICapacityBreakerModelState{}, now, http.StatusServiceUnavailable, "Our servers are currently overloaded. Please try again later.")
+	require.True(t, decision.Applied)
+	require.False(t, decision.Permanent)
+	require.Equal(t, 1, decision.Level)
+	require.NotNil(t, decision.Until)
+	require.Equal(t, now.Add(30*time.Minute), *decision.Until)
+	require.Equal(t, "server_is_overloaded", state.Reason)
+
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(59*time.Minute), http.StatusServiceUnavailable, "again")
+	require.True(t, decision.Applied)
+	require.Equal(t, 2, decision.Level)
+	require.NotNil(t, decision.Until)
+	require.Equal(t, now.Add(119*time.Minute), *decision.Until)
+
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(120*time.Minute), http.StatusServiceUnavailable, "again")
+	require.True(t, decision.Applied)
+	require.Equal(t, 3, decision.Level)
+	require.NotNil(t, decision.Until)
+	require.Equal(t, now.Add(240*time.Minute), *decision.Until)
+
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(241*time.Minute), http.StatusServiceUnavailable, "again")
+	require.True(t, decision.Applied)
+	require.True(t, decision.Permanent)
+	require.Equal(t, 4, decision.Level)
+	require.True(t, state.Permanent)
+}
+
+func TestOpenAICapacityBreakerStateResetsAfterStableWindow(t *testing.T) {
+	now := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
+	state, decision := NextOpenAICapacityBreakerState(OpenAICapacityBreakerModelState{}, now, http.StatusServiceUnavailable, "first")
+	require.Equal(t, 1, decision.Level)
+
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(59*time.Minute), http.StatusServiceUnavailable, "second")
+	require.Equal(t, 2, decision.Level)
+
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(2*time.Hour+31*time.Minute), http.StatusServiceUnavailable, "stable reset")
+	require.True(t, decision.Applied)
+	require.Equal(t, 1, decision.Level)
+	require.False(t, state.Permanent)
+	require.NotNil(t, decision.Until)
+	require.Equal(t, now.Add(3*time.Hour+1*time.Minute), *decision.Until)
+}
+
+func TestOpenAICapacityBreakerStateSkipsActiveDisableAndPermanent(t *testing.T) {
+	now := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
+	active := OpenAICapacityBreakerModelState{
+		Level:         1,
+		DisabledUntil: now.Add(10 * time.Minute).Format(time.RFC3339),
+		Reason:        "server_is_overloaded",
+	}
+	_, decision := NextOpenAICapacityBreakerState(active, now, http.StatusServiceUnavailable, "repeat")
+	require.False(t, decision.Applied)
+	require.Equal(t, "already_disabled", decision.SkippedReason)
+
+	permanent := OpenAICapacityBreakerModelState{Level: 4, Permanent: true, Reason: "server_is_overloaded"}
+	_, decision = NextOpenAICapacityBreakerState(permanent, now, http.StatusServiceUnavailable, "repeat")
+	require.False(t, decision.Applied)
+	require.True(t, decision.Permanent)
+	require.Equal(t, "already_permanent", decision.SkippedReason)
 }
 
 // 流中途（已有真实输出）降载时无法再 failover，此时必须把降载码改写为客户端
