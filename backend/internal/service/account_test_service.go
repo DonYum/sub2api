@@ -2114,6 +2114,10 @@ func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account
 		if codexUpdates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(codexUpdates) > 0 {
 			updates = mergeExtraUpdates(updates, codexUpdates)
 		}
+		updates = applyOpenAICompactProbeCapabilityPolicy(account, resp, updates)
+		if supported, ok := updates["openai_compact_supported"].(bool); ok && !supported {
+			logOpenAICompactProbeMarkedUnsupported(account, resp)
+		}
 		if len(updates) > 0 {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
 			mergeAccountExtra(account, updates)

@@ -133,6 +133,79 @@ func TestBuildOpenAICompactProbeExtraUpdates_2xxWithoutCompactionItemMarksUnsupp
 	}
 }
 
+func TestApplyOpenAICompactProbeCapabilityPolicy_ManualModeSkipsCapabilityWrite(t *testing.T) {
+	updates := map[string]any{
+		"openai_compact_supported":   false,
+		"openai_compact_last_status": http.StatusNotFound,
+		"openai_compact_last_error":  "404 page not found",
+	}
+	account := &Account{
+		ID:       7,
+		Platform: PlatformOpenAI,
+		Extra: map[string]any{
+			"openai_compact_mode": OpenAICompactModeForceOn,
+		},
+	}
+
+	got := applyOpenAICompactProbeCapabilityPolicy(account, &http.Response{StatusCode: http.StatusNotFound}, updates)
+	if _, exists := got["openai_compact_supported"]; exists {
+		t.Fatalf("manual compact mode must not be overwritten by probe capability verdict")
+	}
+	if got["openai_compact_last_status"] != http.StatusNotFound {
+		t.Fatalf("expected diagnostic fields to be preserved, got %v", got)
+	}
+}
+
+func TestApplyOpenAICompactProbeCapabilityPolicy_MultiModel2xxFalseKeepsUnknown(t *testing.T) {
+	updates := map[string]any{
+		"openai_compact_supported":   false,
+		"openai_compact_last_status": http.StatusOK,
+		"openai_compact_last_error":  "upstream returned 2xx without a compaction output item",
+	}
+	account := &Account{
+		ID:       8,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-5.5":     "gpt-5.5",
+				"gpt-5.6-sol": "gpt-5.6-sol",
+			},
+		},
+	}
+
+	got := applyOpenAICompactProbeCapabilityPolicy(account, &http.Response{StatusCode: http.StatusOK}, updates)
+	if _, exists := got["openai_compact_supported"]; exists {
+		t.Fatalf("multi-model compact probe false must stay unknown, got %v", got)
+	}
+	if got["openai_compact_last_error"] == "" {
+		t.Fatalf("expected diagnostic error to be preserved")
+	}
+}
+
+func TestApplyOpenAICompactProbeCapabilityPolicy_EndpointMissingStillMarksUnsupported(t *testing.T) {
+	updates := map[string]any{
+		"openai_compact_supported":   false,
+		"openai_compact_last_status": http.StatusNotFound,
+	}
+	account := &Account{
+		ID:       9,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{
+				"gpt-5.5":     "gpt-5.5",
+				"gpt-5.6-sol": "gpt-5.6-sol",
+			},
+		},
+	}
+
+	got := applyOpenAICompactProbeCapabilityPolicy(account, &http.Response{StatusCode: http.StatusNotFound}, updates)
+	if got["openai_compact_supported"] != false {
+		t.Fatalf("endpoint-level 404 should remain account-wide false, got %v", got)
+	}
+}
+
 func TestCreateOpenAICompactProbePayload_NativeV2Shape(t *testing.T) {
 	payload := createOpenAICompactProbePayload("gpt-5.6-sol", true)
 	if payload["stream"] != true {

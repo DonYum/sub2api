@@ -1,6 +1,7 @@
 package service
 
 import (
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -93,10 +94,11 @@ func shouldMarkOpenAICompactUnsupported(status int, body []byte) bool {
 }
 
 // buildOpenAICompactProbeExtraUpdates 计算探测结果的账号 extra 更新。
-// compactionFound 是 v2 契约判据：HTTP 2xx 但响应无 compaction item 时同样
-// 记为不支持（链路把 compaction_trigger 吞掉的形态，等价 codex 的 "got 0
-// items" fatal，#5478/#5648）。极端场景（上游链只支持 legacy unary compact）
-// 可用账号级 openai_compact_mode=force_on 人工覆盖。
+// compactionFound 是 v2 契约判据：HTTP 2xx 但响应无 compaction item 时会先产出
+// unsupported verdict（链路把 compaction_trigger 吞掉的形态，等价 codex 的 "got 0
+// items" fatal，#5478/#5648）。真正落账号级能力位前还要经过
+// applyOpenAICompactProbeCapabilityPolicy：人工 force 不覆盖，多模型映射不把单个
+// 探测模型的失败外推成账号级 false。
 func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probeErr error, compactionFound bool, now time.Time) map[string]any {
 	updates := map[string]any{
 		"openai_compact_checked_at":  now.Format(time.RFC3339),
@@ -137,6 +139,71 @@ func buildOpenAICompactProbeExtraUpdates(resp *http.Response, body []byte, probe
 	}
 
 	return updates
+}
+
+func applyOpenAICompactProbeCapabilityPolicy(account *Account, resp *http.Response, updates map[string]any) map[string]any {
+	if account == nil || len(updates) == 0 {
+		return updates
+	}
+	rawSupported, hasSupported := updates["openai_compact_supported"]
+	if !hasSupported {
+		return updates
+	}
+
+	mode := account.GetOpenAICompactMode()
+	if mode != OpenAICompactModeAuto {
+		delete(updates, "openai_compact_supported")
+		slog.Warn(
+			"openai_compact_probe_capability_write_skipped_manual_mode",
+			"account_id", account.ID,
+			"account_name", account.Name,
+			"mode", mode,
+		)
+		return updates
+	}
+
+	supported, ok := rawSupported.(bool)
+	if !ok || supported {
+		return updates
+	}
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	if !openAICompactProbeFalseVerdictIsAccountWide(account, status) {
+		delete(updates, "openai_compact_supported")
+		slog.Warn(
+			"openai_compact_probe_model_specific_false_keep_unknown",
+			"account_id", account.ID,
+			"account_name", account.Name,
+			"upstream_status", status,
+		)
+	}
+	return updates
+}
+
+func openAICompactProbeFalseVerdictIsAccountWide(account *Account, status int) bool {
+	switch status {
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusNotImplemented:
+		return true
+	}
+	return responsesProbeFalseVerdictIsAccountWide(account)
+}
+
+func logOpenAICompactProbeMarkedUnsupported(account *Account, resp *http.Response) {
+	if account == nil {
+		return
+	}
+	status := 0
+	if resp != nil {
+		status = resp.StatusCode
+	}
+	slog.Warn(
+		"openai_compact_probe_marked_unsupported",
+		"account_id", account.ID,
+		"account_name", account.Name,
+		"upstream_status", status,
+	)
 }
 
 func mergeExtraUpdates(base map[string]any, more map[string]any) map[string]any {
