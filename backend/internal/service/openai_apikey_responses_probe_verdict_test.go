@@ -27,9 +27,8 @@ func newResponsesProbeAccount(id int64) Account {
 }
 
 // runResponsesProbe 跑一次探测，返回落库的 extra 更新；未落库时返回 nil。
-func runResponsesProbe(t *testing.T, status int, body string) map[string]any {
+func runResponsesProbeForAccount(t *testing.T, account Account, status int, body string) map[string]any {
 	t.Helper()
-	account := newResponsesProbeAccount(4200)
 	// 带缓冲且不阻塞：探测决定不落标时通道应保持为空。
 	updateCalls := make(chan map[string]any, 1)
 	repo := &snapshotUpdateAccountRepo{
@@ -54,6 +53,11 @@ func runResponsesProbe(t *testing.T, status int, body string) map[string]any {
 	default:
 		return nil
 	}
+}
+
+func runResponsesProbe(t *testing.T, status int, body string) map[string]any {
+	t.Helper()
+	return runResponsesProbeForAccount(t, newResponsesProbeAccount(4200), status, body)
 }
 
 // issue #5371：账号一旦被落标为「不支持 Responses」，网关就长期改走
@@ -84,6 +88,28 @@ func TestProbeOpenAIAPIKeyResponsesSupport_InconclusiveResponseKeepsUnknown(t *t
 				"判据不成立时必须保持 unknown，不得落标")
 		})
 	}
+}
+
+func TestProbeOpenAIAPIKeyResponsesSupport_ManualModeSkipsProbe(t *testing.T) {
+	account := newResponsesProbeAccount(4201)
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceResponses),
+	}
+
+	require.Nil(t, runResponsesProbeForAccount(t, account, http.StatusNotFound, `{"error":{"message":"not found"}}`),
+		"manual force_responses must not be overwritten by background probe")
+}
+
+func TestProbeOpenAIAPIKeyResponsesSupport_MultiModelFalseKeepsUnknown(t *testing.T) {
+	account := newResponsesProbeAccount(4202)
+	account.Credentials["model_mapping"] = map[string]any{
+		"auto-review": "codex-auto-review",
+		"sol":         "gpt-5.6-sol",
+	}
+
+	require.Nil(t, runResponsesProbeForAccount(t, account, http.StatusOK,
+		`{"status":"completed","output":[{"type":"reasoning"}]}`),
+		"one mapped model's tool behavior must not mark a heterogeneous account as chat-only")
 }
 
 // 对照不变式：能下结论的响应仍要落标，否则「不落标」写宽了就等于把整个探测废掉。

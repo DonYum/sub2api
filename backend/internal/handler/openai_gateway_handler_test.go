@@ -173,6 +173,51 @@ func TestOpenAIResponsesRequiredCapability(t *testing.T) {
 	}
 }
 
+func TestOpenAIResponsesBodyRequiresNativeRouting(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{
+			name: "plain text responses can use fallback",
+			body: `{"model":"gpt-5.6-sol","input":"hello"}`,
+			want: false,
+		},
+		{
+			name: "ordinary function tools can use chat fallback",
+			body: `{"model":"gpt-5.6-sol","tools":[{"type":"function","name":"lookup"}],"input":"hello"}`,
+			want: false,
+		},
+		{
+			name: "namespace tools require native responses",
+			body: `{"model":"gpt-5.6-sol","tools":[{"type":"namespace","name":"mcp","tools":[{"type":"function","name":"exec"}]}],"input":"hello"}`,
+			want: true,
+		},
+		{
+			name: "codex additional tools require native responses",
+			body: `{"model":"gpt-5.6-sol","input":[{"type":"additional_tools","tools":[{"type":"custom","name":"exec"}]},{"role":"user","content":"hello"}]}`,
+			want: true,
+		},
+		{
+			name: "namespaced history call requires native responses",
+			body: `{"model":"gpt-5.6-sol","input":[{"type":"function_call","namespace":"terminal","name":"exec"}]}`,
+			want: true,
+		},
+		{
+			name: "local shell tool requires native responses",
+			body: `{"model":"gpt-5.6-sol","tools":[{"type":"local_shell","name":"shell"}],"input":"hello"}`,
+			want: true,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openAIResponsesBodyRequiresNativeRouting([]byte(tt.body)))
+		})
+	}
+}
+
 func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"},"messages":[{"role":"user","content":"hello"}]}`)
 

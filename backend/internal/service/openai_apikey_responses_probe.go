@@ -96,6 +96,26 @@ func selectResponsesProbeModel(account *Account) string {
 	return candidates[0]
 }
 
+func responsesProbeConcreteModelCount(account *Account) int {
+	mapping := account.GetModelMapping()
+	if len(mapping) == 0 {
+		return 0
+	}
+	seen := make(map[string]struct{}, len(mapping))
+	for _, upstream := range mapping {
+		upstream = strings.TrimSpace(upstream)
+		if upstream == "" || strings.Contains(upstream, "*") {
+			continue
+		}
+		seen[upstream] = struct{}{}
+	}
+	return len(seen)
+}
+
+func responsesProbeFalseVerdictIsAccountWide(account *Account) bool {
+	return responsesProbeConcreteModelCount(account) <= 1
+}
+
 // ProbeOpenAIAPIKeyResponsesSupport 探测 OpenAI APIKey 账号上游是否支持
 // /v1/responses 端点，并将结果持久化到 accounts.extra.openai_responses_supported。
 //
@@ -121,6 +141,10 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	}
 	if account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
 		// 仅 OpenAI APIKey 账号需要探测；其他账号类型无能力差异。
+		return
+	}
+	if mode := openai_compat.NormalizeResponsesSupportMode(account.GetExtraString(openai_compat.ExtraKeyResponsesMode)); mode != openai_compat.ResponsesSupportModeAuto {
+		logger.LegacyPrintf("service.openai_probe", "probe_skip_manual_responses_mode: account_id=%d mode=%s", accountID, mode)
 		return
 	}
 
@@ -196,6 +220,13 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	}
 
 	supported := decideResponsesProbeSupport(resp.StatusCode, bodyBytes)
+	if !supported && resp.StatusCode >= 200 && resp.StatusCode < 300 && !responsesProbeFalseVerdictIsAccountWide(account) {
+		logger.LegacyPrintf("service.openai_probe",
+			"probe_model_specific_false_keep_unknown: account_id=%d base_url=%s probe_model=%s status=%d",
+			accountID, normalizedBaseURL, probeModel, resp.StatusCode,
+		)
+		return
+	}
 
 	if err := s.accountRepo.UpdateExtra(ctx, accountID, map[string]any{
 		openai_compat.ExtraKeyResponsesSupported: supported,

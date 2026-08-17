@@ -227,6 +227,39 @@ func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponse
 	return openAIResponsesRequiredCapability(imageIntent, platform)
 }
 
+func openAIResponsesBodyRequiresNativeRouting(body []byte) bool {
+	if openAIResponsesToolsRequireNativeRouting(gjson.GetBytes(body, "tools")) {
+		return true
+	}
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return false
+	}
+	for _, item := range input.Array() {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		if itemType == "additional_tools" {
+			return true
+		}
+		if strings.Contains(itemType, "function_call") && strings.TrimSpace(item.Get("namespace").String()) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func openAIResponsesToolsRequireNativeRouting(tools gjson.Result) bool {
+	if !tools.IsArray() {
+		return false
+	}
+	for _, tool := range tools.Array() {
+		switch strings.TrimSpace(tool.Get("type").String()) {
+		case "namespace", "local_shell":
+			return true
+		}
+	}
+	return false
+}
+
 func allowOpenAICompatibleMessagesDispatch(apiKey *service.APIKey) bool {
 	if apiKey == nil || apiKey.Group == nil {
 		return true
@@ -500,7 +533,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
 	// 复用前置权限与并发阶段在未修改 body 上确认的显式生图意图，避免大 tools 请求重复扫描。
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
-	needsResponses := nativeV2 || legacyCompact
+	needsResponses := nativeV2 || legacyCompact || openAIResponsesBodyRequiresNativeRouting(body)
 	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, needsResponses, requestPlatform)
 
 	// 分组利润控制：请求级装配定价上下文——pricingAt 固定本请求的

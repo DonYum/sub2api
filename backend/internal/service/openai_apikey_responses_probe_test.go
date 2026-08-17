@@ -118,3 +118,20 @@ func TestSelectResponsesProbeModel(t *testing.T) {
 	}}
 	require.Equal(t, openai.DefaultTestModel, selectResponsesProbeModel(acctAllWild))
 }
+
+func TestResponsesProbeConcreteModelCount(t *testing.T) {
+	require.Equal(t, 0, responsesProbeConcreteModelCount(&Account{}))
+	require.Equal(t, 1, responsesProbeConcreteModelCount(&Account{Credentials: map[string]any{
+		"model_mapping": map[string]any{
+			"a": "gpt-5.6-sol",
+			"b": "gpt-5.6-sol",
+			"c": "gpt-*",
+		},
+	}}))
+	require.Equal(t, 2, responsesProbeConcreteModelCount(&Account{Credentials: map[string]any{
+		"model_mapping": map[string]any{
+			"a": "codex-auto-review",
+			"b": "gpt-5.6-sol",
+		},
+	}}))
+}
