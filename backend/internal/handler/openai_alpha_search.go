@@ -248,6 +248,7 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
 	sessionID := service.ExtractClientSessionID(c)
+	codingAgentMetadata := service.ExtractCodingAgentMetadata(c, body, clientIP)
 	requestPayloadHash := service.HashUsageRequestPayload(body)
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
@@ -255,21 +256,22 @@ func (h *OpenAIGatewayHandler) recordAlphaSearchUsage(
 
 	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
-			Result:             result,
-			APIKey:             apiKey,
-			User:               apiKey.User,
-			Account:            account,
-			Subscription:       subscription,
-			InboundEndpoint:    inboundEndpoint,
-			UpstreamEndpoint:   upstreamEndpoint,
-			UserAgent:          userAgent,
-			IPAddress:          clientIP,
-			RequestPayloadHash: requestPayloadHash,
-			APIKeyService:      h.apiKeyService,
-			QuotaPlatform:      quotaPlatform,
-			SessionID:          sessionID,
-			ChannelUsageFields: channelMapping.ToUsageFields(requestedModel, result.UpstreamModel),
-			PricingAt:          service.OpenAIPricingAtFromContext(c.Request.Context()),
+			Result:              result,
+			APIKey:              apiKey,
+			User:                apiKey.User,
+			Account:             account,
+			Subscription:        subscription,
+			InboundEndpoint:     inboundEndpoint,
+			UpstreamEndpoint:    upstreamEndpoint,
+			UserAgent:           userAgent,
+			IPAddress:           clientIP,
+			RequestPayloadHash:  requestPayloadHash,
+			APIKeyService:       h.apiKeyService,
+			QuotaPlatform:       quotaPlatform,
+			SessionID:           sessionID,
+			CodingAgentMetadata: codingAgentMetadata,
+			ChannelUsageFields:  channelMapping.ToUsageFields(requestedModel, result.UpstreamModel),
+			PricingAt:           service.OpenAIPricingAtFromContext(c.Request.Context()),
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.openai_gateway.alpha_search"),

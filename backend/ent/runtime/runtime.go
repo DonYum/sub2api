@@ -2090,40 +2090,88 @@ func init() {
 	usagelogDescIPAddress := usagelogFields[35].Descriptor()
 	// usagelog.IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	usagelog.IPAddressValidator = usagelogDescIPAddress.Validators[0].(func(string) error)
+	// usagelogDescSessionID is the schema descriptor for session_id field.
+	usagelogDescSessionID := usagelogFields[36].Descriptor()
+	// usagelog.SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	usagelog.SessionIDValidator = usagelogDescSessionID.Validators[0].(func(string) error)
+	// usagelogDescClientMachineID is the schema descriptor for client_machine_id field.
+	usagelogDescClientMachineID := usagelogFields[37].Descriptor()
+	// usagelog.ClientMachineIDValidator is a validator for the "client_machine_id" field. It is called by the builders before save.
+	usagelog.ClientMachineIDValidator = usagelogDescClientMachineID.Validators[0].(func(string) error)
+	// usagelogDescClientMachineSource is the schema descriptor for client_machine_source field.
+	usagelogDescClientMachineSource := usagelogFields[38].Descriptor()
+	// usagelog.ClientMachineSourceValidator is a validator for the "client_machine_source" field. It is called by the builders before save.
+	usagelog.ClientMachineSourceValidator = usagelogDescClientMachineSource.Validators[0].(func(string) error)
+	// usagelogDescClientDeviceID is the schema descriptor for client_device_id field.
+	usagelogDescClientDeviceID := usagelogFields[39].Descriptor()
+	// usagelog.ClientDeviceIDValidator is a validator for the "client_device_id" field. It is called by the builders before save.
+	usagelog.ClientDeviceIDValidator = usagelogDescClientDeviceID.Validators[0].(func(string) error)
+	// usagelogDescClientAccountUUID is the schema descriptor for client_account_uuid field.
+	usagelogDescClientAccountUUID := usagelogFields[40].Descriptor()
+	// usagelog.ClientAccountUUIDValidator is a validator for the "client_account_uuid" field. It is called by the builders before save.
+	usagelog.ClientAccountUUIDValidator = usagelogDescClientAccountUUID.Validators[0].(func(string) error)
+	// usagelogDescClientOriginator is the schema descriptor for client_originator field.
+	usagelogDescClientOriginator := usagelogFields[41].Descriptor()
+	// usagelog.ClientOriginatorValidator is a validator for the "client_originator" field. It is called by the builders before save.
+	usagelog.ClientOriginatorValidator = usagelogDescClientOriginator.Validators[0].(func(string) error)
+	// usagelogDescCodexInstallationID is the schema descriptor for codex_installation_id field.
+	usagelogDescCodexInstallationID := usagelogFields[42].Descriptor()
+	// usagelog.CodexInstallationIDValidator is a validator for the "codex_installation_id" field. It is called by the builders before save.
+	usagelog.CodexInstallationIDValidator = usagelogDescCodexInstallationID.Validators[0].(func(string) error)
+	// usagelogDescCodexWindowID is the schema descriptor for codex_window_id field.
+	usagelogDescCodexWindowID := usagelogFields[43].Descriptor()
+	// usagelog.CodexWindowIDValidator is a validator for the "codex_window_id" field. It is called by the builders before save.
+	usagelog.CodexWindowIDValidator = usagelogDescCodexWindowID.Validators[0].(func(string) error)
+	// usagelogDescCodexSessionID is the schema descriptor for codex_session_id field.
+	usagelogDescCodexSessionID := usagelogFields[44].Descriptor()
+	// usagelog.CodexSessionIDValidator is a validator for the "codex_session_id" field. It is called by the builders before save.
+	usagelog.CodexSessionIDValidator = usagelogDescCodexSessionID.Validators[0].(func(string) error)
+	// usagelogDescCodexThreadID is the schema descriptor for codex_thread_id field.
+	usagelogDescCodexThreadID := usagelogFields[45].Descriptor()
+	// usagelog.CodexThreadIDValidator is a validator for the "codex_thread_id" field. It is called by the builders before save.
+	usagelog.CodexThreadIDValidator = usagelogDescCodexThreadID.Validators[0].(func(string) error)
+	// usagelogDescCodexTurnID is the schema descriptor for codex_turn_id field.
+	usagelogDescCodexTurnID := usagelogFields[46].Descriptor()
+	// usagelog.CodexTurnIDValidator is a validator for the "codex_turn_id" field. It is called by the builders before save.
+	usagelog.CodexTurnIDValidator = usagelogDescCodexTurnID.Validators[0].(func(string) error)
+	// usagelogDescTerminalHash is the schema descriptor for terminal_hash field.
+	usagelogDescTerminalHash := usagelogFields[47].Descriptor()
+	// usagelog.TerminalHashValidator is a validator for the "terminal_hash" field. It is called by the builders before save.
+	usagelog.TerminalHashValidator = usagelogDescTerminalHash.Validators[0].(func(string) error)
 	// usagelogDescImageCount is the schema descriptor for image_count field.
-	usagelogDescImageCount := usagelogFields[36].Descriptor()
+	usagelogDescImageCount := usagelogFields[48].Descriptor()
 	// usagelog.DefaultImageCount holds the default value on creation for the image_count field.
 	usagelog.DefaultImageCount = usagelogDescImageCount.Default.(int)
 	// usagelogDescImageSize is the schema descriptor for image_size field.
-	usagelogDescImageSize := usagelogFields[37].Descriptor()
+	usagelogDescImageSize := usagelogFields[49].Descriptor()
 	// usagelog.ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
 	usagelog.ImageSizeValidator = usagelogDescImageSize.Validators[0].(func(string) error)
 	// usagelogDescImageInputSize is the schema descriptor for image_input_size field.
-	usagelogDescImageInputSize := usagelogFields[38].Descriptor()
+	usagelogDescImageInputSize := usagelogFields[50].Descriptor()
 	// usagelog.ImageInputSizeValidator is a validator for the "image_input_size" field. It is called by the builders before save.
 	usagelog.ImageInputSizeValidator = usagelogDescImageInputSize.Validators[0].(func(string) error)
 	// usagelogDescImageOutputSize is the schema descriptor for image_output_size field.
-	usagelogDescImageOutputSize := usagelogFields[39].Descriptor()
+	usagelogDescImageOutputSize := usagelogFields[51].Descriptor()
 	// usagelog.ImageOutputSizeValidator is a validator for the "image_output_size" field. It is called by the builders before save.
 	usagelog.ImageOutputSizeValidator = usagelogDescImageOutputSize.Validators[0].(func(string) error)
 	// usagelogDescImageSizeSource is the schema descriptor for image_size_source field.
-	usagelogDescImageSizeSource := usagelogFields[40].Descriptor()
+	usagelogDescImageSizeSource := usagelogFields[52].Descriptor()
 	// usagelog.ImageSizeSourceValidator is a validator for the "image_size_source" field. It is called by the builders before save.
 	usagelog.ImageSizeSourceValidator = usagelogDescImageSizeSource.Validators[0].(func(string) error)
 	// usagelogDescVideoCount is the schema descriptor for video_count field.
-	usagelogDescVideoCount := usagelogFields[42].Descriptor()
+	usagelogDescVideoCount := usagelogFields[54].Descriptor()
 	// usagelog.DefaultVideoCount holds the default value on creation for the video_count field.
 	usagelog.DefaultVideoCount = usagelogDescVideoCount.Default.(int)
 	// usagelogDescVideoResolution is the schema descriptor for video_resolution field.
-	usagelogDescVideoResolution := usagelogFields[43].Descriptor()
+	usagelogDescVideoResolution := usagelogFields[55].Descriptor()
 	// usagelog.VideoResolutionValidator is a validator for the "video_resolution" field. It is called by the builders before save.
 	usagelog.VideoResolutionValidator = usagelogDescVideoResolution.Validators[0].(func(string) error)
 	// usagelogDescCacheTTLOverridden is the schema descriptor for cache_ttl_overridden field.
-	usagelogDescCacheTTLOverridden := usagelogFields[45].Descriptor()
+	usagelogDescCacheTTLOverridden := usagelogFields[57].Descriptor()
 	// usagelog.DefaultCacheTTLOverridden holds the default value on creation for the cache_ttl_overridden field.
 	usagelog.DefaultCacheTTLOverridden = usagelogDescCacheTTLOverridden.Default.(bool)
 	// usagelogDescCreatedAt is the schema descriptor for created_at field.
-	usagelogDescCreatedAt := usagelogFields[46].Descriptor()
+	usagelogDescCreatedAt := usagelogFields[58].Descriptor()
 	// usagelog.DefaultCreatedAt holds the default value on creation for the created_at field.
 	usagelog.DefaultCreatedAt = usagelogDescCreatedAt.Default.(func() time.Time)
 	userMixin := schema.User{}.Mixin()

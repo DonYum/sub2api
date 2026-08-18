@@ -86,6 +86,30 @@ const (
 	FieldUserAgent = "user_agent"
 	// FieldIPAddress holds the string denoting the ip_address field in the database.
 	FieldIPAddress = "ip_address"
+	// FieldSessionID holds the string denoting the session_id field in the database.
+	FieldSessionID = "session_id"
+	// FieldClientMachineID holds the string denoting the client_machine_id field in the database.
+	FieldClientMachineID = "client_machine_id"
+	// FieldClientMachineSource holds the string denoting the client_machine_source field in the database.
+	FieldClientMachineSource = "client_machine_source"
+	// FieldClientDeviceID holds the string denoting the client_device_id field in the database.
+	FieldClientDeviceID = "client_device_id"
+	// FieldClientAccountUUID holds the string denoting the client_account_uuid field in the database.
+	FieldClientAccountUUID = "client_account_uuid"
+	// FieldClientOriginator holds the string denoting the client_originator field in the database.
+	FieldClientOriginator = "client_originator"
+	// FieldCodexInstallationID holds the string denoting the codex_installation_id field in the database.
+	FieldCodexInstallationID = "codex_installation_id"
+	// FieldCodexWindowID holds the string denoting the codex_window_id field in the database.
+	FieldCodexWindowID = "codex_window_id"
+	// FieldCodexSessionID holds the string denoting the codex_session_id field in the database.
+	FieldCodexSessionID = "codex_session_id"
+	// FieldCodexThreadID holds the string denoting the codex_thread_id field in the database.
+	FieldCodexThreadID = "codex_thread_id"
+	// FieldCodexTurnID holds the string denoting the codex_turn_id field in the database.
+	FieldCodexTurnID = "codex_turn_id"
+	// FieldTerminalHash holds the string denoting the terminal_hash field in the database.
+	FieldTerminalHash = "terminal_hash"
 	// FieldImageCount holds the string denoting the image_count field in the database.
 	FieldImageCount = "image_count"
 	// FieldImageSize holds the string denoting the image_size field in the database.
@@ -196,6 +220,18 @@ var Columns = []string{
 	FieldFirstTokenMs,
 	FieldUserAgent,
 	FieldIPAddress,
+	FieldSessionID,
+	FieldClientMachineID,
+	FieldClientMachineSource,
+	FieldClientDeviceID,
+	FieldClientAccountUUID,
+	FieldClientOriginator,
+	FieldCodexInstallationID,
+	FieldCodexWindowID,
+	FieldCodexSessionID,
+	FieldCodexThreadID,
+	FieldCodexTurnID,
+	FieldTerminalHash,
 	FieldImageCount,
 	FieldImageSize,
 	FieldImageInputSize,
@@ -272,6 +308,30 @@ var (
 	UserAgentValidator func(string) error
 	// IPAddressValidator is a validator for the "ip_address" field. It is called by the builders before save.
 	IPAddressValidator func(string) error
+	// SessionIDValidator is a validator for the "session_id" field. It is called by the builders before save.
+	SessionIDValidator func(string) error
+	// ClientMachineIDValidator is a validator for the "client_machine_id" field. It is called by the builders before save.
+	ClientMachineIDValidator func(string) error
+	// ClientMachineSourceValidator is a validator for the "client_machine_source" field. It is called by the builders before save.
+	ClientMachineSourceValidator func(string) error
+	// ClientDeviceIDValidator is a validator for the "client_device_id" field. It is called by the builders before save.
+	ClientDeviceIDValidator func(string) error
+	// ClientAccountUUIDValidator is a validator for the "client_account_uuid" field. It is called by the builders before save.
+	ClientAccountUUIDValidator func(string) error
+	// ClientOriginatorValidator is a validator for the "client_originator" field. It is called by the builders before save.
+	ClientOriginatorValidator func(string) error
+	// CodexInstallationIDValidator is a validator for the "codex_installation_id" field. It is called by the builders before save.
+	CodexInstallationIDValidator func(string) error
+	// CodexWindowIDValidator is a validator for the "codex_window_id" field. It is called by the builders before save.
+	CodexWindowIDValidator func(string) error
+	// CodexSessionIDValidator is a validator for the "codex_session_id" field. It is called by the builders before save.
+	CodexSessionIDValidator func(string) error
+	// CodexThreadIDValidator is a validator for the "codex_thread_id" field. It is called by the builders before save.
+	CodexThreadIDValidator func(string) error
+	// CodexTurnIDValidator is a validator for the "codex_turn_id" field. It is called by the builders before save.
+	CodexTurnIDValidator func(string) error
+	// TerminalHashValidator is a validator for the "terminal_hash" field. It is called by the builders before save.
+	TerminalHashValidator func(string) error
 	// DefaultImageCount holds the default value on creation for the "image_count" field.
 	DefaultImageCount int
 	// ImageSizeValidator is a validator for the "image_size" field. It is called by the builders before save.
@@ -478,6 +538,66 @@ func ByUserAgent(opts ...sql.OrderTermOption) OrderOption {
 // ByIPAddress orders the results by the ip_address field.
 func ByIPAddress(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldIPAddress, opts...).ToFunc()
+}
+
+// BySessionID orders the results by the session_id field.
+func BySessionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSessionID, opts...).ToFunc()
+}
+
+// ByClientMachineID orders the results by the client_machine_id field.
+func ByClientMachineID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientMachineID, opts...).ToFunc()
+}
+
+// ByClientMachineSource orders the results by the client_machine_source field.
+func ByClientMachineSource(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientMachineSource, opts...).ToFunc()
+}
+
+// ByClientDeviceID orders the results by the client_device_id field.
+func ByClientDeviceID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientDeviceID, opts...).ToFunc()
+}
+
+// ByClientAccountUUID orders the results by the client_account_uuid field.
+func ByClientAccountUUID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientAccountUUID, opts...).ToFunc()
+}
+
+// ByClientOriginator orders the results by the client_originator field.
+func ByClientOriginator(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldClientOriginator, opts...).ToFunc()
+}
+
+// ByCodexInstallationID orders the results by the codex_installation_id field.
+func ByCodexInstallationID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexInstallationID, opts...).ToFunc()
+}
+
+// ByCodexWindowID orders the results by the codex_window_id field.
+func ByCodexWindowID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexWindowID, opts...).ToFunc()
+}
+
+// ByCodexSessionID orders the results by the codex_session_id field.
+func ByCodexSessionID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexSessionID, opts...).ToFunc()
+}
+
+// ByCodexThreadID orders the results by the codex_thread_id field.
+func ByCodexThreadID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexThreadID, opts...).ToFunc()
+}
+
+// ByCodexTurnID orders the results by the codex_turn_id field.
+func ByCodexTurnID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCodexTurnID, opts...).ToFunc()
+}
+
+// ByTerminalHash orders the results by the terminal_hash field.
+func ByTerminalHash(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldTerminalHash, opts...).ToFunc()
 }
 
 // ByImageCount orders the results by the image_count field.

@@ -44046,6 +44046,18 @@ type UsageLogMutation struct {
 	addfirst_token_ms            *int
 	user_agent                   *string
 	ip_address                   *string
+	session_id                   *string
+	client_machine_id            *string
+	client_machine_source        *string
+	client_device_id             *string
+	client_account_uuid          *string
+	client_originator            *string
+	codex_installation_id        *string
+	codex_window_id              *string
+	codex_session_id             *string
+	codex_thread_id              *string
+	codex_turn_id                *string
+	terminal_hash                *string
 	image_count                  *int
 	addimage_count               *int
 	image_size                   *string
@@ -46029,6 +46041,594 @@ func (m *UsageLogMutation) ResetIPAddress() {
 	delete(m.clearedFields, usagelog.FieldIPAddress)
 }
 
+// SetSessionID sets the "session_id" field.
+func (m *UsageLogMutation) SetSessionID(s string) {
+	m.session_id = &s
+}
+
+// SessionID returns the value of the "session_id" field in the mutation.
+func (m *UsageLogMutation) SessionID() (r string, exists bool) {
+	v := m.session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSessionID returns the old "session_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldSessionID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSessionID: %w", err)
+	}
+	return oldValue.SessionID, nil
+}
+
+// ClearSessionID clears the value of the "session_id" field.
+func (m *UsageLogMutation) ClearSessionID() {
+	m.session_id = nil
+	m.clearedFields[usagelog.FieldSessionID] = struct{}{}
+}
+
+// SessionIDCleared returns if the "session_id" field was cleared in this mutation.
+func (m *UsageLogMutation) SessionIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldSessionID]
+	return ok
+}
+
+// ResetSessionID resets all changes to the "session_id" field.
+func (m *UsageLogMutation) ResetSessionID() {
+	m.session_id = nil
+	delete(m.clearedFields, usagelog.FieldSessionID)
+}
+
+// SetClientMachineID sets the "client_machine_id" field.
+func (m *UsageLogMutation) SetClientMachineID(s string) {
+	m.client_machine_id = &s
+}
+
+// ClientMachineID returns the value of the "client_machine_id" field in the mutation.
+func (m *UsageLogMutation) ClientMachineID() (r string, exists bool) {
+	v := m.client_machine_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientMachineID returns the old "client_machine_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldClientMachineID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientMachineID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientMachineID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientMachineID: %w", err)
+	}
+	return oldValue.ClientMachineID, nil
+}
+
+// ClearClientMachineID clears the value of the "client_machine_id" field.
+func (m *UsageLogMutation) ClearClientMachineID() {
+	m.client_machine_id = nil
+	m.clearedFields[usagelog.FieldClientMachineID] = struct{}{}
+}
+
+// ClientMachineIDCleared returns if the "client_machine_id" field was cleared in this mutation.
+func (m *UsageLogMutation) ClientMachineIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldClientMachineID]
+	return ok
+}
+
+// ResetClientMachineID resets all changes to the "client_machine_id" field.
+func (m *UsageLogMutation) ResetClientMachineID() {
+	m.client_machine_id = nil
+	delete(m.clearedFields, usagelog.FieldClientMachineID)
+}
+
+// SetClientMachineSource sets the "client_machine_source" field.
+func (m *UsageLogMutation) SetClientMachineSource(s string) {
+	m.client_machine_source = &s
+}
+
+// ClientMachineSource returns the value of the "client_machine_source" field in the mutation.
+func (m *UsageLogMutation) ClientMachineSource() (r string, exists bool) {
+	v := m.client_machine_source
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientMachineSource returns the old "client_machine_source" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldClientMachineSource(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientMachineSource is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientMachineSource requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientMachineSource: %w", err)
+	}
+	return oldValue.ClientMachineSource, nil
+}
+
+// ClearClientMachineSource clears the value of the "client_machine_source" field.
+func (m *UsageLogMutation) ClearClientMachineSource() {
+	m.client_machine_source = nil
+	m.clearedFields[usagelog.FieldClientMachineSource] = struct{}{}
+}
+
+// ClientMachineSourceCleared returns if the "client_machine_source" field was cleared in this mutation.
+func (m *UsageLogMutation) ClientMachineSourceCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldClientMachineSource]
+	return ok
+}
+
+// ResetClientMachineSource resets all changes to the "client_machine_source" field.
+func (m *UsageLogMutation) ResetClientMachineSource() {
+	m.client_machine_source = nil
+	delete(m.clearedFields, usagelog.FieldClientMachineSource)
+}
+
+// SetClientDeviceID sets the "client_device_id" field.
+func (m *UsageLogMutation) SetClientDeviceID(s string) {
+	m.client_device_id = &s
+}
+
+// ClientDeviceID returns the value of the "client_device_id" field in the mutation.
+func (m *UsageLogMutation) ClientDeviceID() (r string, exists bool) {
+	v := m.client_device_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientDeviceID returns the old "client_device_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldClientDeviceID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientDeviceID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientDeviceID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientDeviceID: %w", err)
+	}
+	return oldValue.ClientDeviceID, nil
+}
+
+// ClearClientDeviceID clears the value of the "client_device_id" field.
+func (m *UsageLogMutation) ClearClientDeviceID() {
+	m.client_device_id = nil
+	m.clearedFields[usagelog.FieldClientDeviceID] = struct{}{}
+}
+
+// ClientDeviceIDCleared returns if the "client_device_id" field was cleared in this mutation.
+func (m *UsageLogMutation) ClientDeviceIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldClientDeviceID]
+	return ok
+}
+
+// ResetClientDeviceID resets all changes to the "client_device_id" field.
+func (m *UsageLogMutation) ResetClientDeviceID() {
+	m.client_device_id = nil
+	delete(m.clearedFields, usagelog.FieldClientDeviceID)
+}
+
+// SetClientAccountUUID sets the "client_account_uuid" field.
+func (m *UsageLogMutation) SetClientAccountUUID(s string) {
+	m.client_account_uuid = &s
+}
+
+// ClientAccountUUID returns the value of the "client_account_uuid" field in the mutation.
+func (m *UsageLogMutation) ClientAccountUUID() (r string, exists bool) {
+	v := m.client_account_uuid
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientAccountUUID returns the old "client_account_uuid" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldClientAccountUUID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientAccountUUID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientAccountUUID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientAccountUUID: %w", err)
+	}
+	return oldValue.ClientAccountUUID, nil
+}
+
+// ClearClientAccountUUID clears the value of the "client_account_uuid" field.
+func (m *UsageLogMutation) ClearClientAccountUUID() {
+	m.client_account_uuid = nil
+	m.clearedFields[usagelog.FieldClientAccountUUID] = struct{}{}
+}
+
+// ClientAccountUUIDCleared returns if the "client_account_uuid" field was cleared in this mutation.
+func (m *UsageLogMutation) ClientAccountUUIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldClientAccountUUID]
+	return ok
+}
+
+// ResetClientAccountUUID resets all changes to the "client_account_uuid" field.
+func (m *UsageLogMutation) ResetClientAccountUUID() {
+	m.client_account_uuid = nil
+	delete(m.clearedFields, usagelog.FieldClientAccountUUID)
+}
+
+// SetClientOriginator sets the "client_originator" field.
+func (m *UsageLogMutation) SetClientOriginator(s string) {
+	m.client_originator = &s
+}
+
+// ClientOriginator returns the value of the "client_originator" field in the mutation.
+func (m *UsageLogMutation) ClientOriginator() (r string, exists bool) {
+	v := m.client_originator
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldClientOriginator returns the old "client_originator" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldClientOriginator(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldClientOriginator is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldClientOriginator requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldClientOriginator: %w", err)
+	}
+	return oldValue.ClientOriginator, nil
+}
+
+// ClearClientOriginator clears the value of the "client_originator" field.
+func (m *UsageLogMutation) ClearClientOriginator() {
+	m.client_originator = nil
+	m.clearedFields[usagelog.FieldClientOriginator] = struct{}{}
+}
+
+// ClientOriginatorCleared returns if the "client_originator" field was cleared in this mutation.
+func (m *UsageLogMutation) ClientOriginatorCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldClientOriginator]
+	return ok
+}
+
+// ResetClientOriginator resets all changes to the "client_originator" field.
+func (m *UsageLogMutation) ResetClientOriginator() {
+	m.client_originator = nil
+	delete(m.clearedFields, usagelog.FieldClientOriginator)
+}
+
+// SetCodexInstallationID sets the "codex_installation_id" field.
+func (m *UsageLogMutation) SetCodexInstallationID(s string) {
+	m.codex_installation_id = &s
+}
+
+// CodexInstallationID returns the value of the "codex_installation_id" field in the mutation.
+func (m *UsageLogMutation) CodexInstallationID() (r string, exists bool) {
+	v := m.codex_installation_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexInstallationID returns the old "codex_installation_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCodexInstallationID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexInstallationID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexInstallationID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexInstallationID: %w", err)
+	}
+	return oldValue.CodexInstallationID, nil
+}
+
+// ClearCodexInstallationID clears the value of the "codex_installation_id" field.
+func (m *UsageLogMutation) ClearCodexInstallationID() {
+	m.codex_installation_id = nil
+	m.clearedFields[usagelog.FieldCodexInstallationID] = struct{}{}
+}
+
+// CodexInstallationIDCleared returns if the "codex_installation_id" field was cleared in this mutation.
+func (m *UsageLogMutation) CodexInstallationIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCodexInstallationID]
+	return ok
+}
+
+// ResetCodexInstallationID resets all changes to the "codex_installation_id" field.
+func (m *UsageLogMutation) ResetCodexInstallationID() {
+	m.codex_installation_id = nil
+	delete(m.clearedFields, usagelog.FieldCodexInstallationID)
+}
+
+// SetCodexWindowID sets the "codex_window_id" field.
+func (m *UsageLogMutation) SetCodexWindowID(s string) {
+	m.codex_window_id = &s
+}
+
+// CodexWindowID returns the value of the "codex_window_id" field in the mutation.
+func (m *UsageLogMutation) CodexWindowID() (r string, exists bool) {
+	v := m.codex_window_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexWindowID returns the old "codex_window_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCodexWindowID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexWindowID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexWindowID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexWindowID: %w", err)
+	}
+	return oldValue.CodexWindowID, nil
+}
+
+// ClearCodexWindowID clears the value of the "codex_window_id" field.
+func (m *UsageLogMutation) ClearCodexWindowID() {
+	m.codex_window_id = nil
+	m.clearedFields[usagelog.FieldCodexWindowID] = struct{}{}
+}
+
+// CodexWindowIDCleared returns if the "codex_window_id" field was cleared in this mutation.
+func (m *UsageLogMutation) CodexWindowIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCodexWindowID]
+	return ok
+}
+
+// ResetCodexWindowID resets all changes to the "codex_window_id" field.
+func (m *UsageLogMutation) ResetCodexWindowID() {
+	m.codex_window_id = nil
+	delete(m.clearedFields, usagelog.FieldCodexWindowID)
+}
+
+// SetCodexSessionID sets the "codex_session_id" field.
+func (m *UsageLogMutation) SetCodexSessionID(s string) {
+	m.codex_session_id = &s
+}
+
+// CodexSessionID returns the value of the "codex_session_id" field in the mutation.
+func (m *UsageLogMutation) CodexSessionID() (r string, exists bool) {
+	v := m.codex_session_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexSessionID returns the old "codex_session_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCodexSessionID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexSessionID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexSessionID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexSessionID: %w", err)
+	}
+	return oldValue.CodexSessionID, nil
+}
+
+// ClearCodexSessionID clears the value of the "codex_session_id" field.
+func (m *UsageLogMutation) ClearCodexSessionID() {
+	m.codex_session_id = nil
+	m.clearedFields[usagelog.FieldCodexSessionID] = struct{}{}
+}
+
+// CodexSessionIDCleared returns if the "codex_session_id" field was cleared in this mutation.
+func (m *UsageLogMutation) CodexSessionIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCodexSessionID]
+	return ok
+}
+
+// ResetCodexSessionID resets all changes to the "codex_session_id" field.
+func (m *UsageLogMutation) ResetCodexSessionID() {
+	m.codex_session_id = nil
+	delete(m.clearedFields, usagelog.FieldCodexSessionID)
+}
+
+// SetCodexThreadID sets the "codex_thread_id" field.
+func (m *UsageLogMutation) SetCodexThreadID(s string) {
+	m.codex_thread_id = &s
+}
+
+// CodexThreadID returns the value of the "codex_thread_id" field in the mutation.
+func (m *UsageLogMutation) CodexThreadID() (r string, exists bool) {
+	v := m.codex_thread_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexThreadID returns the old "codex_thread_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCodexThreadID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexThreadID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexThreadID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexThreadID: %w", err)
+	}
+	return oldValue.CodexThreadID, nil
+}
+
+// ClearCodexThreadID clears the value of the "codex_thread_id" field.
+func (m *UsageLogMutation) ClearCodexThreadID() {
+	m.codex_thread_id = nil
+	m.clearedFields[usagelog.FieldCodexThreadID] = struct{}{}
+}
+
+// CodexThreadIDCleared returns if the "codex_thread_id" field was cleared in this mutation.
+func (m *UsageLogMutation) CodexThreadIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCodexThreadID]
+	return ok
+}
+
+// ResetCodexThreadID resets all changes to the "codex_thread_id" field.
+func (m *UsageLogMutation) ResetCodexThreadID() {
+	m.codex_thread_id = nil
+	delete(m.clearedFields, usagelog.FieldCodexThreadID)
+}
+
+// SetCodexTurnID sets the "codex_turn_id" field.
+func (m *UsageLogMutation) SetCodexTurnID(s string) {
+	m.codex_turn_id = &s
+}
+
+// CodexTurnID returns the value of the "codex_turn_id" field in the mutation.
+func (m *UsageLogMutation) CodexTurnID() (r string, exists bool) {
+	v := m.codex_turn_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCodexTurnID returns the old "codex_turn_id" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldCodexTurnID(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCodexTurnID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCodexTurnID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCodexTurnID: %w", err)
+	}
+	return oldValue.CodexTurnID, nil
+}
+
+// ClearCodexTurnID clears the value of the "codex_turn_id" field.
+func (m *UsageLogMutation) ClearCodexTurnID() {
+	m.codex_turn_id = nil
+	m.clearedFields[usagelog.FieldCodexTurnID] = struct{}{}
+}
+
+// CodexTurnIDCleared returns if the "codex_turn_id" field was cleared in this mutation.
+func (m *UsageLogMutation) CodexTurnIDCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldCodexTurnID]
+	return ok
+}
+
+// ResetCodexTurnID resets all changes to the "codex_turn_id" field.
+func (m *UsageLogMutation) ResetCodexTurnID() {
+	m.codex_turn_id = nil
+	delete(m.clearedFields, usagelog.FieldCodexTurnID)
+}
+
+// SetTerminalHash sets the "terminal_hash" field.
+func (m *UsageLogMutation) SetTerminalHash(s string) {
+	m.terminal_hash = &s
+}
+
+// TerminalHash returns the value of the "terminal_hash" field in the mutation.
+func (m *UsageLogMutation) TerminalHash() (r string, exists bool) {
+	v := m.terminal_hash
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTerminalHash returns the old "terminal_hash" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldTerminalHash(ctx context.Context) (v *string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTerminalHash is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTerminalHash requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTerminalHash: %w", err)
+	}
+	return oldValue.TerminalHash, nil
+}
+
+// ClearTerminalHash clears the value of the "terminal_hash" field.
+func (m *UsageLogMutation) ClearTerminalHash() {
+	m.terminal_hash = nil
+	m.clearedFields[usagelog.FieldTerminalHash] = struct{}{}
+}
+
+// TerminalHashCleared returns if the "terminal_hash" field was cleared in this mutation.
+func (m *UsageLogMutation) TerminalHashCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldTerminalHash]
+	return ok
+}
+
+// ResetTerminalHash resets all changes to the "terminal_hash" field.
+func (m *UsageLogMutation) ResetTerminalHash() {
+	m.terminal_hash = nil
+	delete(m.clearedFields, usagelog.FieldTerminalHash)
+}
+
 // SetImageCount sets the "image_count" field.
 func (m *UsageLogMutation) SetImageCount(i int) {
 	m.image_count = &i
@@ -46746,7 +47346,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 59)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -46854,6 +47454,42 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.ip_address != nil {
 		fields = append(fields, usagelog.FieldIPAddress)
+	}
+	if m.session_id != nil {
+		fields = append(fields, usagelog.FieldSessionID)
+	}
+	if m.client_machine_id != nil {
+		fields = append(fields, usagelog.FieldClientMachineID)
+	}
+	if m.client_machine_source != nil {
+		fields = append(fields, usagelog.FieldClientMachineSource)
+	}
+	if m.client_device_id != nil {
+		fields = append(fields, usagelog.FieldClientDeviceID)
+	}
+	if m.client_account_uuid != nil {
+		fields = append(fields, usagelog.FieldClientAccountUUID)
+	}
+	if m.client_originator != nil {
+		fields = append(fields, usagelog.FieldClientOriginator)
+	}
+	if m.codex_installation_id != nil {
+		fields = append(fields, usagelog.FieldCodexInstallationID)
+	}
+	if m.codex_window_id != nil {
+		fields = append(fields, usagelog.FieldCodexWindowID)
+	}
+	if m.codex_session_id != nil {
+		fields = append(fields, usagelog.FieldCodexSessionID)
+	}
+	if m.codex_thread_id != nil {
+		fields = append(fields, usagelog.FieldCodexThreadID)
+	}
+	if m.codex_turn_id != nil {
+		fields = append(fields, usagelog.FieldCodexTurnID)
+	}
+	if m.terminal_hash != nil {
+		fields = append(fields, usagelog.FieldTerminalHash)
 	}
 	if m.image_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
@@ -46968,6 +47604,30 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
 		return m.IPAddress()
+	case usagelog.FieldSessionID:
+		return m.SessionID()
+	case usagelog.FieldClientMachineID:
+		return m.ClientMachineID()
+	case usagelog.FieldClientMachineSource:
+		return m.ClientMachineSource()
+	case usagelog.FieldClientDeviceID:
+		return m.ClientDeviceID()
+	case usagelog.FieldClientAccountUUID:
+		return m.ClientAccountUUID()
+	case usagelog.FieldClientOriginator:
+		return m.ClientOriginator()
+	case usagelog.FieldCodexInstallationID:
+		return m.CodexInstallationID()
+	case usagelog.FieldCodexWindowID:
+		return m.CodexWindowID()
+	case usagelog.FieldCodexSessionID:
+		return m.CodexSessionID()
+	case usagelog.FieldCodexThreadID:
+		return m.CodexThreadID()
+	case usagelog.FieldCodexTurnID:
+		return m.CodexTurnID()
+	case usagelog.FieldTerminalHash:
+		return m.TerminalHash()
 	case usagelog.FieldImageCount:
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
@@ -47071,6 +47731,30 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
 		return m.OldIPAddress(ctx)
+	case usagelog.FieldSessionID:
+		return m.OldSessionID(ctx)
+	case usagelog.FieldClientMachineID:
+		return m.OldClientMachineID(ctx)
+	case usagelog.FieldClientMachineSource:
+		return m.OldClientMachineSource(ctx)
+	case usagelog.FieldClientDeviceID:
+		return m.OldClientDeviceID(ctx)
+	case usagelog.FieldClientAccountUUID:
+		return m.OldClientAccountUUID(ctx)
+	case usagelog.FieldClientOriginator:
+		return m.OldClientOriginator(ctx)
+	case usagelog.FieldCodexInstallationID:
+		return m.OldCodexInstallationID(ctx)
+	case usagelog.FieldCodexWindowID:
+		return m.OldCodexWindowID(ctx)
+	case usagelog.FieldCodexSessionID:
+		return m.OldCodexSessionID(ctx)
+	case usagelog.FieldCodexThreadID:
+		return m.OldCodexThreadID(ctx)
+	case usagelog.FieldCodexTurnID:
+		return m.OldCodexTurnID(ctx)
+	case usagelog.FieldTerminalHash:
+		return m.OldTerminalHash(ctx)
 	case usagelog.FieldImageCount:
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
@@ -47353,6 +48037,90 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIPAddress(v)
+		return nil
+	case usagelog.FieldSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSessionID(v)
+		return nil
+	case usagelog.FieldClientMachineID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientMachineID(v)
+		return nil
+	case usagelog.FieldClientMachineSource:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientMachineSource(v)
+		return nil
+	case usagelog.FieldClientDeviceID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientDeviceID(v)
+		return nil
+	case usagelog.FieldClientAccountUUID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientAccountUUID(v)
+		return nil
+	case usagelog.FieldClientOriginator:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetClientOriginator(v)
+		return nil
+	case usagelog.FieldCodexInstallationID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexInstallationID(v)
+		return nil
+	case usagelog.FieldCodexWindowID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexWindowID(v)
+		return nil
+	case usagelog.FieldCodexSessionID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexSessionID(v)
+		return nil
+	case usagelog.FieldCodexThreadID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexThreadID(v)
+		return nil
+	case usagelog.FieldCodexTurnID:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCodexTurnID(v)
+		return nil
+	case usagelog.FieldTerminalHash:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTerminalHash(v)
 		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
@@ -47761,6 +48529,42 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldIPAddress) {
 		fields = append(fields, usagelog.FieldIPAddress)
 	}
+	if m.FieldCleared(usagelog.FieldSessionID) {
+		fields = append(fields, usagelog.FieldSessionID)
+	}
+	if m.FieldCleared(usagelog.FieldClientMachineID) {
+		fields = append(fields, usagelog.FieldClientMachineID)
+	}
+	if m.FieldCleared(usagelog.FieldClientMachineSource) {
+		fields = append(fields, usagelog.FieldClientMachineSource)
+	}
+	if m.FieldCleared(usagelog.FieldClientDeviceID) {
+		fields = append(fields, usagelog.FieldClientDeviceID)
+	}
+	if m.FieldCleared(usagelog.FieldClientAccountUUID) {
+		fields = append(fields, usagelog.FieldClientAccountUUID)
+	}
+	if m.FieldCleared(usagelog.FieldClientOriginator) {
+		fields = append(fields, usagelog.FieldClientOriginator)
+	}
+	if m.FieldCleared(usagelog.FieldCodexInstallationID) {
+		fields = append(fields, usagelog.FieldCodexInstallationID)
+	}
+	if m.FieldCleared(usagelog.FieldCodexWindowID) {
+		fields = append(fields, usagelog.FieldCodexWindowID)
+	}
+	if m.FieldCleared(usagelog.FieldCodexSessionID) {
+		fields = append(fields, usagelog.FieldCodexSessionID)
+	}
+	if m.FieldCleared(usagelog.FieldCodexThreadID) {
+		fields = append(fields, usagelog.FieldCodexThreadID)
+	}
+	if m.FieldCleared(usagelog.FieldCodexTurnID) {
+		fields = append(fields, usagelog.FieldCodexTurnID)
+	}
+	if m.FieldCleared(usagelog.FieldTerminalHash) {
+		fields = append(fields, usagelog.FieldTerminalHash)
+	}
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
 	}
@@ -47840,6 +48644,42 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ClearIPAddress()
+		return nil
+	case usagelog.FieldSessionID:
+		m.ClearSessionID()
+		return nil
+	case usagelog.FieldClientMachineID:
+		m.ClearClientMachineID()
+		return nil
+	case usagelog.FieldClientMachineSource:
+		m.ClearClientMachineSource()
+		return nil
+	case usagelog.FieldClientDeviceID:
+		m.ClearClientDeviceID()
+		return nil
+	case usagelog.FieldClientAccountUUID:
+		m.ClearClientAccountUUID()
+		return nil
+	case usagelog.FieldClientOriginator:
+		m.ClearClientOriginator()
+		return nil
+	case usagelog.FieldCodexInstallationID:
+		m.ClearCodexInstallationID()
+		return nil
+	case usagelog.FieldCodexWindowID:
+		m.ClearCodexWindowID()
+		return nil
+	case usagelog.FieldCodexSessionID:
+		m.ClearCodexSessionID()
+		return nil
+	case usagelog.FieldCodexThreadID:
+		m.ClearCodexThreadID()
+		return nil
+	case usagelog.FieldCodexTurnID:
+		m.ClearCodexTurnID()
+		return nil
+	case usagelog.FieldTerminalHash:
+		m.ClearTerminalHash()
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
@@ -47977,6 +48817,42 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ResetIPAddress()
+		return nil
+	case usagelog.FieldSessionID:
+		m.ResetSessionID()
+		return nil
+	case usagelog.FieldClientMachineID:
+		m.ResetClientMachineID()
+		return nil
+	case usagelog.FieldClientMachineSource:
+		m.ResetClientMachineSource()
+		return nil
+	case usagelog.FieldClientDeviceID:
+		m.ResetClientDeviceID()
+		return nil
+	case usagelog.FieldClientAccountUUID:
+		m.ResetClientAccountUUID()
+		return nil
+	case usagelog.FieldClientOriginator:
+		m.ResetClientOriginator()
+		return nil
+	case usagelog.FieldCodexInstallationID:
+		m.ResetCodexInstallationID()
+		return nil
+	case usagelog.FieldCodexWindowID:
+		m.ResetCodexWindowID()
+		return nil
+	case usagelog.FieldCodexSessionID:
+		m.ResetCodexSessionID()
+		return nil
+	case usagelog.FieldCodexThreadID:
+		m.ResetCodexThreadID()
+		return nil
+	case usagelog.FieldCodexTurnID:
+		m.ResetCodexTurnID()
+		return nil
+	case usagelog.FieldTerminalHash:
+		m.ResetTerminalHash()
 		return nil
 	case usagelog.FieldImageCount:
 		m.ResetImageCount()

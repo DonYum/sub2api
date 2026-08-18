@@ -140,6 +140,66 @@ func (UsageLog) Fields() []ent.Field {
 			MaxLen(45). // 支持 IPv6
 			Optional().
 			Nillable(),
+		field.String("session_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("客户端显式会话标识"),
+		field.String("client_machine_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("coding agent 客户端机器/安装标识原始值"),
+		field.String("client_machine_source").
+			MaxLen(32).
+			Optional().
+			Nillable().
+			Comment("client_machine_id 来源"),
+		field.String("client_device_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("metadata.user_id device_id"),
+		field.String("client_account_uuid").
+			MaxLen(128).
+			Optional().
+			Nillable().
+			Comment("metadata.user_id account_uuid"),
+		field.String("client_originator").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("Originator 请求头"),
+		field.String("codex_installation_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("Codex installation_id"),
+		field.String("codex_window_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("Codex window_id"),
+		field.String("codex_session_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("Codex session_id"),
+		field.String("codex_thread_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("Codex thread_id"),
+		field.String("codex_turn_id").
+			MaxLen(255).
+			Optional().
+			Nillable().
+			Comment("Codex turn_id"),
+		field.String("terminal_hash").
+			MaxLen(64).
+			Optional().
+			Nillable().
+			Comment("终端画像聚合 hash，仅用于分组分析"),
 
 		// 图片生成字段（仅 gemini-3-pro-image 等图片模型使用）
 		field.Int("image_count").

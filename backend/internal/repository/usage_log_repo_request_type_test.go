@@ -99,6 +99,17 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			sqlmock.AnyArg(), // client_machine_id
+			sqlmock.AnyArg(), // client_machine_source
+			sqlmock.AnyArg(), // client_device_id
+			sqlmock.AnyArg(), // client_account_uuid
+			sqlmock.AnyArg(), // client_originator
+			sqlmock.AnyArg(), // codex_installation_id
+			sqlmock.AnyArg(), // codex_window_id
+			sqlmock.AnyArg(), // codex_session_id
+			sqlmock.AnyArg(), // codex_thread_id
+			sqlmock.AnyArg(), // codex_turn_id
+			sqlmock.AnyArg(), // terminal_hash
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -191,6 +202,17 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			sqlmock.AnyArg(), // billing_mode
 			sqlmock.AnyArg(), // account_stats_cost
 			sqlmock.AnyArg(), // session_id
+			sqlmock.AnyArg(), // client_machine_id
+			sqlmock.AnyArg(), // client_machine_source
+			sqlmock.AnyArg(), // client_device_id
+			sqlmock.AnyArg(), // client_account_uuid
+			sqlmock.AnyArg(), // client_originator
+			sqlmock.AnyArg(), // codex_installation_id
+			sqlmock.AnyArg(), // codex_window_id
+			sqlmock.AnyArg(), // codex_session_id
+			sqlmock.AnyArg(), // codex_thread_id
+			sqlmock.AnyArg(), // codex_turn_id
+			sqlmock.AnyArg(), // terminal_hash
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -893,6 +915,17 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			sql.NullFloat64{},
 			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
+			sql.NullString{},
 			now,
 		}})
 		require.NoError(t, err)
@@ -970,6 +1003,17 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			sql.NullString{},  // client_machine_id
+			sql.NullString{},  // client_machine_source
+			sql.NullString{},  // client_device_id
+			sql.NullString{},  // client_account_uuid
+			sql.NullString{},  // client_originator
+			sql.NullString{},  // codex_installation_id
+			sql.NullString{},  // codex_window_id
+			sql.NullString{},  // codex_session_id
+			sql.NullString{},  // codex_thread_id
+			sql.NullString{},  // codex_turn_id
+			sql.NullString{},  // terminal_hash
 			now,
 		}})
 		require.NoError(t, err)
@@ -1030,6 +1074,17 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			sql.NullString{},  // client_machine_id
+			sql.NullString{},  // client_machine_source
+			sql.NullString{},  // client_device_id
+			sql.NullString{},  // client_account_uuid
+			sql.NullString{},  // client_originator
+			sql.NullString{},  // codex_installation_id
+			sql.NullString{},  // codex_window_id
+			sql.NullString{},  // codex_session_id
+			sql.NullString{},  // codex_thread_id
+			sql.NullString{},  // codex_turn_id
+			sql.NullString{},  // terminal_hash
 			now,
 		}})
 		require.NoError(t, err)
@@ -1090,6 +1145,17 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // billing_mode
 			sql.NullFloat64{}, // account_stats_cost
 			sql.NullString{},  // session_id
+			sql.NullString{},  // client_machine_id
+			sql.NullString{},  // client_machine_source
+			sql.NullString{},  // client_device_id
+			sql.NullString{},  // client_account_uuid
+			sql.NullString{},  // client_originator
+			sql.NullString{},  // codex_installation_id
+			sql.NullString{},  // codex_window_id
+			sql.NullString{},  // codex_session_id
+			sql.NullString{},  // codex_thread_id
+			sql.NullString{},  // codex_turn_id
+			sql.NullString{},  // terminal_hash
 			now,
 		}})
 		require.NoError(t, err)

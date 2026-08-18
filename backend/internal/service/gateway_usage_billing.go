@@ -37,21 +37,22 @@ func (s *GatewayService) ResolveUserGroupRateMultiplier(ctx context.Context, use
 // RecordUsageInput 记录使用量的输入参数。
 // 异步 worker 只接收计费所需快照，不能持有 ParsedRequest/RequestBodyRef 这类大请求体引用。
 type RecordUsageInput struct {
-	Result             *ForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription  // 可选：订阅信息
-	PricingAt          time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
-	InboundEndpoint    string             // 入站端点（客户端请求路径）
-	UpstreamEndpoint   string             // 上游端点（标准化后的上游路径）
-	UserAgent          string             // 请求的 User-Agent
-	IPAddress          string             // 请求的客户端 IP 地址
-	SessionID          string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
-	RequestPayloadHash string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
-	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
-	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
-	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
+	Result              *ForwardResult
+	APIKey              *APIKey
+	User                *User
+	Account             *Account
+	Subscription        *UserSubscription   // 可选：订阅信息
+	PricingAt           time.Time           // token 售价固定时刻；零值保持既有的记录时刻语义
+	InboundEndpoint     string              // 入站端点（客户端请求路径）
+	UpstreamEndpoint    string              // 上游端点（标准化后的上游路径）
+	UserAgent           string              // 请求的 User-Agent
+	IPAddress           string              // 请求的客户端 IP 地址
+	SessionID           string              // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	CodingAgentMetadata CodingAgentMetadata // coding agent 终端/客户端观测字段，仅落 usage_logs
+	RequestPayloadHash  string              // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	ForceCacheBilling   bool                // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
+	APIKeyService       APIKeyQuotaUpdater  // 可选：用于更新API Key配额
+	QuotaPlatform       string              // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -606,22 +607,23 @@ type recordUsageOpts struct {
 // RecordUsage 记录使用量并扣费（或更新订阅用量）
 func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
-		Result:             input.Result,
-		APIKey:             input.APIKey,
-		User:               input.User,
-		Account:            input.Account,
-		Subscription:       input.Subscription,
-		PricingAt:          input.PricingAt,
-		InboundEndpoint:    input.InboundEndpoint,
-		UpstreamEndpoint:   input.UpstreamEndpoint,
-		UserAgent:          input.UserAgent,
-		IPAddress:          input.IPAddress,
-		SessionID:          input.SessionID,
-		RequestPayloadHash: input.RequestPayloadHash,
-		ForceCacheBilling:  input.ForceCacheBilling,
-		APIKeyService:      input.APIKeyService,
-		QuotaPlatform:      input.QuotaPlatform,
-		ChannelUsageFields: input.ChannelUsageFields,
+		Result:              input.Result,
+		APIKey:              input.APIKey,
+		User:                input.User,
+		Account:             input.Account,
+		Subscription:        input.Subscription,
+		PricingAt:           input.PricingAt,
+		InboundEndpoint:     input.InboundEndpoint,
+		UpstreamEndpoint:    input.UpstreamEndpoint,
+		UserAgent:           input.UserAgent,
+		IPAddress:           input.IPAddress,
+		SessionID:           input.SessionID,
+		CodingAgentMetadata: input.CodingAgentMetadata,
+		RequestPayloadHash:  input.RequestPayloadHash,
+		ForceCacheBilling:   input.ForceCacheBilling,
+		APIKeyService:       input.APIKeyService,
+		QuotaPlatform:       input.QuotaPlatform,
+		ChannelUsageFields:  input.ChannelUsageFields,
 	}, &recordUsageOpts{})
 }
 
@@ -631,19 +633,20 @@ type RecordUsageLongContextInput struct {
 	APIKey                *APIKey
 	User                  *User
 	Account               *Account
-	Subscription          *UserSubscription  // 可选：订阅信息
-	PricingAt             time.Time          // token 售价固定时刻；零值保持既有的记录时刻语义
-	InboundEndpoint       string             // 入站端点（客户端请求路径）
-	UpstreamEndpoint      string             // 上游端点（标准化后的上游路径）
-	UserAgent             string             // 请求的 User-Agent
-	IPAddress             string             // 请求的客户端 IP 地址
-	SessionID             string             // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
-	RequestPayloadHash    string             // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
-	LongContextThreshold  int                // 长上下文阈值（如 200000）
-	LongContextMultiplier float64            // 超出阈值部分的倍率（如 2.0）
-	ForceCacheBilling     bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
-	APIKeyService         APIKeyQuotaUpdater // API Key 配额服务（可选）
-	QuotaPlatform         string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
+	Subscription          *UserSubscription   // 可选：订阅信息
+	PricingAt             time.Time           // token 售价固定时刻；零值保持既有的记录时刻语义
+	InboundEndpoint       string              // 入站端点（客户端请求路径）
+	UpstreamEndpoint      string              // 上游端点（标准化后的上游路径）
+	UserAgent             string              // 请求的 User-Agent
+	IPAddress             string              // 请求的客户端 IP 地址
+	SessionID             string              // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	CodingAgentMetadata   CodingAgentMetadata // coding agent 终端/客户端观测字段，仅落 usage_logs
+	RequestPayloadHash    string              // 请求体语义哈希，用于降低 request_id 误复用时的静默误去重风险
+	LongContextThreshold  int                 // 长上下文阈值（如 200000）
+	LongContextMultiplier float64             // 超出阈值部分的倍率（如 2.0）
+	ForceCacheBilling     bool                // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
+	APIKeyService         APIKeyQuotaUpdater  // API Key 配额服务（可选）
+	QuotaPlatform         string              // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -651,22 +654,23 @@ type RecordUsageLongContextInput struct {
 // RecordUsageWithLongContext 记录使用量并扣费，支持长上下文双倍计费（用于 Gemini）
 func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *RecordUsageLongContextInput) error {
 	return s.recordUsageCore(ctx, &recordUsageCoreInput{
-		Result:             input.Result,
-		APIKey:             input.APIKey,
-		User:               input.User,
-		Account:            input.Account,
-		Subscription:       input.Subscription,
-		PricingAt:          input.PricingAt,
-		InboundEndpoint:    input.InboundEndpoint,
-		UpstreamEndpoint:   input.UpstreamEndpoint,
-		UserAgent:          input.UserAgent,
-		IPAddress:          input.IPAddress,
-		SessionID:          input.SessionID,
-		RequestPayloadHash: input.RequestPayloadHash,
-		ForceCacheBilling:  input.ForceCacheBilling,
-		APIKeyService:      input.APIKeyService,
-		QuotaPlatform:      input.QuotaPlatform,
-		ChannelUsageFields: input.ChannelUsageFields,
+		Result:              input.Result,
+		APIKey:              input.APIKey,
+		User:                input.User,
+		Account:             input.Account,
+		Subscription:        input.Subscription,
+		PricingAt:           input.PricingAt,
+		InboundEndpoint:     input.InboundEndpoint,
+		UpstreamEndpoint:    input.UpstreamEndpoint,
+		UserAgent:           input.UserAgent,
+		IPAddress:           input.IPAddress,
+		SessionID:           input.SessionID,
+		CodingAgentMetadata: input.CodingAgentMetadata,
+		RequestPayloadHash:  input.RequestPayloadHash,
+		ForceCacheBilling:   input.ForceCacheBilling,
+		APIKeyService:       input.APIKeyService,
+		QuotaPlatform:       input.QuotaPlatform,
+		ChannelUsageFields:  input.ChannelUsageFields,
 	}, &recordUsageOpts{
 		LongContextThreshold:  input.LongContextThreshold,
 		LongContextMultiplier: input.LongContextMultiplier,
@@ -675,21 +679,22 @@ func (s *GatewayService) RecordUsageWithLongContext(ctx context.Context, input *
 
 // recordUsageCoreInput 是 recordUsageCore 的公共输入字段，从两种输入结构体中提取。
 type recordUsageCoreInput struct {
-	Result             *ForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription
-	PricingAt          time.Time
-	InboundEndpoint    string
-	UpstreamEndpoint   string
-	UserAgent          string
-	IPAddress          string
-	SessionID          string
-	RequestPayloadHash string
-	ForceCacheBilling  bool
-	APIKeyService      APIKeyQuotaUpdater
-	QuotaPlatform      string
+	Result              *ForwardResult
+	APIKey              *APIKey
+	User                *User
+	Account             *Account
+	Subscription        *UserSubscription
+	PricingAt           time.Time
+	InboundEndpoint     string
+	UpstreamEndpoint    string
+	UserAgent           string
+	IPAddress           string
+	SessionID           string
+	CodingAgentMetadata CodingAgentMetadata
+	RequestPayloadHash  string
+	ForceCacheBilling   bool
+	APIKeyService       APIKeyQuotaUpdater
+	QuotaPlatform       string
 	ChannelUsageFields
 }
 
@@ -1246,6 +1251,17 @@ func (s *GatewayService) buildRecordUsageLog(
 		UserAgent:             optionalTrimmedStringPtr(input.UserAgent),
 		IPAddress:             optionalTrimmedStringPtr(input.IPAddress),
 		SessionID:             optionalTrimmedStringPtr(input.SessionID),
+		ClientMachineID:       optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientMachineID),
+		ClientMachineSource:   optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientMachineSource),
+		ClientDeviceID:        optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientDeviceID),
+		ClientAccountUUID:     optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientAccountUUID),
+		ClientOriginator:      optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientOriginator),
+		CodexInstallationID:   optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexInstallationID),
+		CodexWindowID:         optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexWindowID),
+		CodexSessionID:        optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexSessionID),
+		CodexThreadID:         optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexThreadID),
+		CodexTurnID:           optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexTurnID),
+		TerminalHash:          optionalTrimmedStringPtr(input.CodingAgentMetadata.TerminalHash),
 		GroupID:               apiKey.GroupID,
 		SubscriptionID:        optionalSubscriptionID(subscription),
 		CreatedAt:             time.Now(),

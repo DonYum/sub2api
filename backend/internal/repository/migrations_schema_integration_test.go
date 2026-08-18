@@ -78,7 +78,19 @@ func TestMigrationsRunner_IsIdempotent_AndSchemaIsUpToDate(t *testing.T) {
 	requireColumn(t, tx, "usage_logs", "video_duration_seconds", "integer", 0, true)
 	requireColumn(t, tx, "usage_logs", "upstream_response_model", "character varying", 200, true)
 	requireColumn(t, tx, "usage_logs", "upstream_model_mismatch", "boolean", 0, true)
+	requireColumn(t, tx, "usage_logs", "client_machine_id", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "client_machine_source", "character varying", 32, true)
+	requireColumn(t, tx, "usage_logs", "client_device_id", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "client_account_uuid", "character varying", 128, true)
+	requireColumn(t, tx, "usage_logs", "client_originator", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "codex_installation_id", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "codex_window_id", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "codex_session_id", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "codex_thread_id", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "codex_turn_id", "character varying", 255, true)
+	requireColumn(t, tx, "usage_logs", "terminal_hash", "character varying", 64, true)
 	requireIndex(t, tx, "usage_logs", usageLogsUpstreamModelMismatchIndex)
+	requireIndex(t, tx, "usage_logs", "idx_usage_logs_api_key_terminal_created")
 
 	var mismatchIndexDef string
 	require.NoError(t, tx.QueryRowContext(context.Background(), `
