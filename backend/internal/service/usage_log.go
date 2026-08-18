@@ -180,6 +180,19 @@ type UsageLog struct {
 	// (e.g. the session_id / X-Session-Id headers). Nil when the client sent no
 	// valid session header. It is never derived from prompt_cache_key or content.
 	SessionID *string
+	// Coding-agent terminal observability fields. These are allowlisted request
+	// metadata captured from headers / metadata.user_id / client_metadata only.
+	ClientMachineID     *string
+	ClientMachineSource *string
+	ClientDeviceID      *string
+	ClientAccountUUID   *string
+	ClientOriginator    *string
+	CodexInstallationID *string
+	CodexWindowID       *string
+	CodexSessionID      *string
+	CodexThreadID       *string
+	CodexTurnID         *string
+	TerminalHash        *string
 
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool

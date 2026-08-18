@@ -95,6 +95,30 @@ type UsageLog struct {
 	UserAgent *string `json:"user_agent,omitempty"`
 	// IPAddress holds the value of the "ip_address" field.
 	IPAddress *string `json:"ip_address,omitempty"`
+	// 客户端显式会话标识
+	SessionID *string `json:"session_id,omitempty"`
+	// coding agent 客户端机器/安装标识原始值
+	ClientMachineID *string `json:"client_machine_id,omitempty"`
+	// client_machine_id 来源
+	ClientMachineSource *string `json:"client_machine_source,omitempty"`
+	// metadata.user_id device_id
+	ClientDeviceID *string `json:"client_device_id,omitempty"`
+	// metadata.user_id account_uuid
+	ClientAccountUUID *string `json:"client_account_uuid,omitempty"`
+	// Originator 请求头
+	ClientOriginator *string `json:"client_originator,omitempty"`
+	// Codex installation_id
+	CodexInstallationID *string `json:"codex_installation_id,omitempty"`
+	// Codex window_id
+	CodexWindowID *string `json:"codex_window_id,omitempty"`
+	// Codex session_id
+	CodexSessionID *string `json:"codex_session_id,omitempty"`
+	// Codex thread_id
+	CodexThreadID *string `json:"codex_thread_id,omitempty"`
+	// Codex turn_id
+	CodexTurnID *string `json:"codex_turn_id,omitempty"`
+	// 终端画像聚合 hash，仅用于分组分析
+	TerminalHash *string `json:"terminal_hash,omitempty"`
 	// ImageCount holds the value of the "image_count" field.
 	ImageCount int `json:"image_count,omitempty"`
 	// ImageSize holds the value of the "image_size" field.
@@ -208,7 +232,7 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullFloat64)
 		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldUpstreamResponseModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldUpstreamResponseModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldSessionID, usagelog.FieldClientMachineID, usagelog.FieldClientMachineSource, usagelog.FieldClientDeviceID, usagelog.FieldClientAccountUUID, usagelog.FieldClientOriginator, usagelog.FieldCodexInstallationID, usagelog.FieldCodexWindowID, usagelog.FieldCodexSessionID, usagelog.FieldCodexThreadID, usagelog.FieldCodexTurnID, usagelog.FieldTerminalHash, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -463,6 +487,90 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.IPAddress = new(string)
 				*_m.IPAddress = value.String
+			}
+		case usagelog.FieldSessionID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field session_id", values[i])
+			} else if value.Valid {
+				_m.SessionID = new(string)
+				*_m.SessionID = value.String
+			}
+		case usagelog.FieldClientMachineID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_machine_id", values[i])
+			} else if value.Valid {
+				_m.ClientMachineID = new(string)
+				*_m.ClientMachineID = value.String
+			}
+		case usagelog.FieldClientMachineSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_machine_source", values[i])
+			} else if value.Valid {
+				_m.ClientMachineSource = new(string)
+				*_m.ClientMachineSource = value.String
+			}
+		case usagelog.FieldClientDeviceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_device_id", values[i])
+			} else if value.Valid {
+				_m.ClientDeviceID = new(string)
+				*_m.ClientDeviceID = value.String
+			}
+		case usagelog.FieldClientAccountUUID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_account_uuid", values[i])
+			} else if value.Valid {
+				_m.ClientAccountUUID = new(string)
+				*_m.ClientAccountUUID = value.String
+			}
+		case usagelog.FieldClientOriginator:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_originator", values[i])
+			} else if value.Valid {
+				_m.ClientOriginator = new(string)
+				*_m.ClientOriginator = value.String
+			}
+		case usagelog.FieldCodexInstallationID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_installation_id", values[i])
+			} else if value.Valid {
+				_m.CodexInstallationID = new(string)
+				*_m.CodexInstallationID = value.String
+			}
+		case usagelog.FieldCodexWindowID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_window_id", values[i])
+			} else if value.Valid {
+				_m.CodexWindowID = new(string)
+				*_m.CodexWindowID = value.String
+			}
+		case usagelog.FieldCodexSessionID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_session_id", values[i])
+			} else if value.Valid {
+				_m.CodexSessionID = new(string)
+				*_m.CodexSessionID = value.String
+			}
+		case usagelog.FieldCodexThreadID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_thread_id", values[i])
+			} else if value.Valid {
+				_m.CodexThreadID = new(string)
+				*_m.CodexThreadID = value.String
+			}
+		case usagelog.FieldCodexTurnID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_turn_id", values[i])
+			} else if value.Valid {
+				_m.CodexTurnID = new(string)
+				*_m.CodexTurnID = value.String
+			}
+		case usagelog.FieldTerminalHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field terminal_hash", values[i])
+			} else if value.Valid {
+				_m.TerminalHash = new(string)
+				*_m.TerminalHash = value.String
 			}
 		case usagelog.FieldImageCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -734,6 +842,66 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	if v := _m.IPAddress; v != nil {
 		builder.WriteString("ip_address=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.SessionID; v != nil {
+		builder.WriteString("session_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientMachineID; v != nil {
+		builder.WriteString("client_machine_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientMachineSource; v != nil {
+		builder.WriteString("client_machine_source=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientDeviceID; v != nil {
+		builder.WriteString("client_device_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientAccountUUID; v != nil {
+		builder.WriteString("client_account_uuid=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientOriginator; v != nil {
+		builder.WriteString("client_originator=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexInstallationID; v != nil {
+		builder.WriteString("codex_installation_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexWindowID; v != nil {
+		builder.WriteString("codex_window_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexSessionID; v != nil {
+		builder.WriteString("codex_session_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexThreadID; v != nil {
+		builder.WriteString("codex_thread_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexTurnID; v != nil {
+		builder.WriteString("codex_turn_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.TerminalHash; v != nil {
+		builder.WriteString("terminal_hash=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

@@ -491,6 +491,174 @@ func (_c *UsageLogCreate) SetNillableIPAddress(v *string) *UsageLogCreate {
 	return _c
 }
 
+// SetSessionID sets the "session_id" field.
+func (_c *UsageLogCreate) SetSessionID(v string) *UsageLogCreate {
+	_c.mutation.SetSessionID(v)
+	return _c
+}
+
+// SetNillableSessionID sets the "session_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableSessionID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetSessionID(*v)
+	}
+	return _c
+}
+
+// SetClientMachineID sets the "client_machine_id" field.
+func (_c *UsageLogCreate) SetClientMachineID(v string) *UsageLogCreate {
+	_c.mutation.SetClientMachineID(v)
+	return _c
+}
+
+// SetNillableClientMachineID sets the "client_machine_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableClientMachineID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetClientMachineID(*v)
+	}
+	return _c
+}
+
+// SetClientMachineSource sets the "client_machine_source" field.
+func (_c *UsageLogCreate) SetClientMachineSource(v string) *UsageLogCreate {
+	_c.mutation.SetClientMachineSource(v)
+	return _c
+}
+
+// SetNillableClientMachineSource sets the "client_machine_source" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableClientMachineSource(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetClientMachineSource(*v)
+	}
+	return _c
+}
+
+// SetClientDeviceID sets the "client_device_id" field.
+func (_c *UsageLogCreate) SetClientDeviceID(v string) *UsageLogCreate {
+	_c.mutation.SetClientDeviceID(v)
+	return _c
+}
+
+// SetNillableClientDeviceID sets the "client_device_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableClientDeviceID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetClientDeviceID(*v)
+	}
+	return _c
+}
+
+// SetClientAccountUUID sets the "client_account_uuid" field.
+func (_c *UsageLogCreate) SetClientAccountUUID(v string) *UsageLogCreate {
+	_c.mutation.SetClientAccountUUID(v)
+	return _c
+}
+
+// SetNillableClientAccountUUID sets the "client_account_uuid" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableClientAccountUUID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetClientAccountUUID(*v)
+	}
+	return _c
+}
+
+// SetClientOriginator sets the "client_originator" field.
+func (_c *UsageLogCreate) SetClientOriginator(v string) *UsageLogCreate {
+	_c.mutation.SetClientOriginator(v)
+	return _c
+}
+
+// SetNillableClientOriginator sets the "client_originator" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableClientOriginator(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetClientOriginator(*v)
+	}
+	return _c
+}
+
+// SetCodexInstallationID sets the "codex_installation_id" field.
+func (_c *UsageLogCreate) SetCodexInstallationID(v string) *UsageLogCreate {
+	_c.mutation.SetCodexInstallationID(v)
+	return _c
+}
+
+// SetNillableCodexInstallationID sets the "codex_installation_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCodexInstallationID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetCodexInstallationID(*v)
+	}
+	return _c
+}
+
+// SetCodexWindowID sets the "codex_window_id" field.
+func (_c *UsageLogCreate) SetCodexWindowID(v string) *UsageLogCreate {
+	_c.mutation.SetCodexWindowID(v)
+	return _c
+}
+
+// SetNillableCodexWindowID sets the "codex_window_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCodexWindowID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetCodexWindowID(*v)
+	}
+	return _c
+}
+
+// SetCodexSessionID sets the "codex_session_id" field.
+func (_c *UsageLogCreate) SetCodexSessionID(v string) *UsageLogCreate {
+	_c.mutation.SetCodexSessionID(v)
+	return _c
+}
+
+// SetNillableCodexSessionID sets the "codex_session_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCodexSessionID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetCodexSessionID(*v)
+	}
+	return _c
+}
+
+// SetCodexThreadID sets the "codex_thread_id" field.
+func (_c *UsageLogCreate) SetCodexThreadID(v string) *UsageLogCreate {
+	_c.mutation.SetCodexThreadID(v)
+	return _c
+}
+
+// SetNillableCodexThreadID sets the "codex_thread_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCodexThreadID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetCodexThreadID(*v)
+	}
+	return _c
+}
+
+// SetCodexTurnID sets the "codex_turn_id" field.
+func (_c *UsageLogCreate) SetCodexTurnID(v string) *UsageLogCreate {
+	_c.mutation.SetCodexTurnID(v)
+	return _c
+}
+
+// SetNillableCodexTurnID sets the "codex_turn_id" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCodexTurnID(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetCodexTurnID(*v)
+	}
+	return _c
+}
+
+// SetTerminalHash sets the "terminal_hash" field.
+func (_c *UsageLogCreate) SetTerminalHash(v string) *UsageLogCreate {
+	_c.mutation.SetTerminalHash(v)
+	return _c
+}
+
+// SetNillableTerminalHash sets the "terminal_hash" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableTerminalHash(v *string) *UsageLogCreate {
+	if v != nil {
+		_c.SetTerminalHash(*v)
+	}
+	return _c
+}
+
 // SetImageCount sets the "image_count" field.
 func (_c *UsageLogCreate) SetImageCount(v int) *UsageLogCreate {
 	_c.mutation.SetImageCount(v)
@@ -894,6 +1062,66 @@ func (_c *UsageLogCreate) check() error {
 			return &ValidationError{Name: "ip_address", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ip_address": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.SessionID(); ok {
+		if err := usagelog.SessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.session_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ClientMachineID(); ok {
+		if err := usagelog.ClientMachineIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_machine_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_machine_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ClientMachineSource(); ok {
+		if err := usagelog.ClientMachineSourceValidator(v); err != nil {
+			return &ValidationError{Name: "client_machine_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_machine_source": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ClientDeviceID(); ok {
+		if err := usagelog.ClientDeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_device_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_device_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ClientAccountUUID(); ok {
+		if err := usagelog.ClientAccountUUIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_account_uuid", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_account_uuid": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.ClientOriginator(); ok {
+		if err := usagelog.ClientOriginatorValidator(v); err != nil {
+			return &ValidationError{Name: "client_originator", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_originator": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.CodexInstallationID(); ok {
+		if err := usagelog.CodexInstallationIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_installation_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_installation_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.CodexWindowID(); ok {
+		if err := usagelog.CodexWindowIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_window_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_window_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.CodexSessionID(); ok {
+		if err := usagelog.CodexSessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_session_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_session_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.CodexThreadID(); ok {
+		if err := usagelog.CodexThreadIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_thread_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_thread_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.CodexTurnID(); ok {
+		if err := usagelog.CodexTurnIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_turn_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_turn_id": %w`, err)}
+		}
+	}
+	if v, ok := _c.mutation.TerminalHash(); ok {
+		if err := usagelog.TerminalHashValidator(v); err != nil {
+			return &ValidationError{Name: "terminal_hash", err: fmt.Errorf(`ent: validator failed for field "UsageLog.terminal_hash": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.ImageCount(); !ok {
 		return &ValidationError{Name: "image_count", err: errors.New(`ent: missing required field "UsageLog.image_count"`)}
 	}
@@ -1090,6 +1318,54 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IPAddress(); ok {
 		_spec.SetField(usagelog.FieldIPAddress, field.TypeString, value)
 		_node.IPAddress = &value
+	}
+	if value, ok := _c.mutation.SessionID(); ok {
+		_spec.SetField(usagelog.FieldSessionID, field.TypeString, value)
+		_node.SessionID = &value
+	}
+	if value, ok := _c.mutation.ClientMachineID(); ok {
+		_spec.SetField(usagelog.FieldClientMachineID, field.TypeString, value)
+		_node.ClientMachineID = &value
+	}
+	if value, ok := _c.mutation.ClientMachineSource(); ok {
+		_spec.SetField(usagelog.FieldClientMachineSource, field.TypeString, value)
+		_node.ClientMachineSource = &value
+	}
+	if value, ok := _c.mutation.ClientDeviceID(); ok {
+		_spec.SetField(usagelog.FieldClientDeviceID, field.TypeString, value)
+		_node.ClientDeviceID = &value
+	}
+	if value, ok := _c.mutation.ClientAccountUUID(); ok {
+		_spec.SetField(usagelog.FieldClientAccountUUID, field.TypeString, value)
+		_node.ClientAccountUUID = &value
+	}
+	if value, ok := _c.mutation.ClientOriginator(); ok {
+		_spec.SetField(usagelog.FieldClientOriginator, field.TypeString, value)
+		_node.ClientOriginator = &value
+	}
+	if value, ok := _c.mutation.CodexInstallationID(); ok {
+		_spec.SetField(usagelog.FieldCodexInstallationID, field.TypeString, value)
+		_node.CodexInstallationID = &value
+	}
+	if value, ok := _c.mutation.CodexWindowID(); ok {
+		_spec.SetField(usagelog.FieldCodexWindowID, field.TypeString, value)
+		_node.CodexWindowID = &value
+	}
+	if value, ok := _c.mutation.CodexSessionID(); ok {
+		_spec.SetField(usagelog.FieldCodexSessionID, field.TypeString, value)
+		_node.CodexSessionID = &value
+	}
+	if value, ok := _c.mutation.CodexThreadID(); ok {
+		_spec.SetField(usagelog.FieldCodexThreadID, field.TypeString, value)
+		_node.CodexThreadID = &value
+	}
+	if value, ok := _c.mutation.CodexTurnID(); ok {
+		_spec.SetField(usagelog.FieldCodexTurnID, field.TypeString, value)
+		_node.CodexTurnID = &value
+	}
+	if value, ok := _c.mutation.TerminalHash(); ok {
+		_spec.SetField(usagelog.FieldTerminalHash, field.TypeString, value)
+		_node.TerminalHash = &value
 	}
 	if value, ok := _c.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
@@ -1899,6 +2175,222 @@ func (u *UsageLogUpsert) UpdateIPAddress() *UsageLogUpsert {
 // ClearIPAddress clears the value of the "ip_address" field.
 func (u *UsageLogUpsert) ClearIPAddress() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldIPAddress)
+	return u
+}
+
+// SetSessionID sets the "session_id" field.
+func (u *UsageLogUpsert) SetSessionID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldSessionID, v)
+	return u
+}
+
+// UpdateSessionID sets the "session_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateSessionID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldSessionID)
+	return u
+}
+
+// ClearSessionID clears the value of the "session_id" field.
+func (u *UsageLogUpsert) ClearSessionID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldSessionID)
+	return u
+}
+
+// SetClientMachineID sets the "client_machine_id" field.
+func (u *UsageLogUpsert) SetClientMachineID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldClientMachineID, v)
+	return u
+}
+
+// UpdateClientMachineID sets the "client_machine_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateClientMachineID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldClientMachineID)
+	return u
+}
+
+// ClearClientMachineID clears the value of the "client_machine_id" field.
+func (u *UsageLogUpsert) ClearClientMachineID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldClientMachineID)
+	return u
+}
+
+// SetClientMachineSource sets the "client_machine_source" field.
+func (u *UsageLogUpsert) SetClientMachineSource(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldClientMachineSource, v)
+	return u
+}
+
+// UpdateClientMachineSource sets the "client_machine_source" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateClientMachineSource() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldClientMachineSource)
+	return u
+}
+
+// ClearClientMachineSource clears the value of the "client_machine_source" field.
+func (u *UsageLogUpsert) ClearClientMachineSource() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldClientMachineSource)
+	return u
+}
+
+// SetClientDeviceID sets the "client_device_id" field.
+func (u *UsageLogUpsert) SetClientDeviceID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldClientDeviceID, v)
+	return u
+}
+
+// UpdateClientDeviceID sets the "client_device_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateClientDeviceID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldClientDeviceID)
+	return u
+}
+
+// ClearClientDeviceID clears the value of the "client_device_id" field.
+func (u *UsageLogUpsert) ClearClientDeviceID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldClientDeviceID)
+	return u
+}
+
+// SetClientAccountUUID sets the "client_account_uuid" field.
+func (u *UsageLogUpsert) SetClientAccountUUID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldClientAccountUUID, v)
+	return u
+}
+
+// UpdateClientAccountUUID sets the "client_account_uuid" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateClientAccountUUID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldClientAccountUUID)
+	return u
+}
+
+// ClearClientAccountUUID clears the value of the "client_account_uuid" field.
+func (u *UsageLogUpsert) ClearClientAccountUUID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldClientAccountUUID)
+	return u
+}
+
+// SetClientOriginator sets the "client_originator" field.
+func (u *UsageLogUpsert) SetClientOriginator(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldClientOriginator, v)
+	return u
+}
+
+// UpdateClientOriginator sets the "client_originator" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateClientOriginator() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldClientOriginator)
+	return u
+}
+
+// ClearClientOriginator clears the value of the "client_originator" field.
+func (u *UsageLogUpsert) ClearClientOriginator() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldClientOriginator)
+	return u
+}
+
+// SetCodexInstallationID sets the "codex_installation_id" field.
+func (u *UsageLogUpsert) SetCodexInstallationID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCodexInstallationID, v)
+	return u
+}
+
+// UpdateCodexInstallationID sets the "codex_installation_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCodexInstallationID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCodexInstallationID)
+	return u
+}
+
+// ClearCodexInstallationID clears the value of the "codex_installation_id" field.
+func (u *UsageLogUpsert) ClearCodexInstallationID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCodexInstallationID)
+	return u
+}
+
+// SetCodexWindowID sets the "codex_window_id" field.
+func (u *UsageLogUpsert) SetCodexWindowID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCodexWindowID, v)
+	return u
+}
+
+// UpdateCodexWindowID sets the "codex_window_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCodexWindowID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCodexWindowID)
+	return u
+}
+
+// ClearCodexWindowID clears the value of the "codex_window_id" field.
+func (u *UsageLogUpsert) ClearCodexWindowID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCodexWindowID)
+	return u
+}
+
+// SetCodexSessionID sets the "codex_session_id" field.
+func (u *UsageLogUpsert) SetCodexSessionID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCodexSessionID, v)
+	return u
+}
+
+// UpdateCodexSessionID sets the "codex_session_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCodexSessionID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCodexSessionID)
+	return u
+}
+
+// ClearCodexSessionID clears the value of the "codex_session_id" field.
+func (u *UsageLogUpsert) ClearCodexSessionID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCodexSessionID)
+	return u
+}
+
+// SetCodexThreadID sets the "codex_thread_id" field.
+func (u *UsageLogUpsert) SetCodexThreadID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCodexThreadID, v)
+	return u
+}
+
+// UpdateCodexThreadID sets the "codex_thread_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCodexThreadID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCodexThreadID)
+	return u
+}
+
+// ClearCodexThreadID clears the value of the "codex_thread_id" field.
+func (u *UsageLogUpsert) ClearCodexThreadID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCodexThreadID)
+	return u
+}
+
+// SetCodexTurnID sets the "codex_turn_id" field.
+func (u *UsageLogUpsert) SetCodexTurnID(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldCodexTurnID, v)
+	return u
+}
+
+// UpdateCodexTurnID sets the "codex_turn_id" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCodexTurnID() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCodexTurnID)
+	return u
+}
+
+// ClearCodexTurnID clears the value of the "codex_turn_id" field.
+func (u *UsageLogUpsert) ClearCodexTurnID() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldCodexTurnID)
+	return u
+}
+
+// SetTerminalHash sets the "terminal_hash" field.
+func (u *UsageLogUpsert) SetTerminalHash(v string) *UsageLogUpsert {
+	u.Set(usagelog.FieldTerminalHash, v)
+	return u
+}
+
+// UpdateTerminalHash sets the "terminal_hash" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateTerminalHash() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldTerminalHash)
+	return u
+}
+
+// ClearTerminalHash clears the value of the "terminal_hash" field.
+func (u *UsageLogUpsert) ClearTerminalHash() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldTerminalHash)
 	return u
 }
 
@@ -2859,6 +3351,258 @@ func (u *UsageLogUpsertOne) UpdateIPAddress() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearIPAddress() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearIPAddress()
+	})
+}
+
+// SetSessionID sets the "session_id" field.
+func (u *UsageLogUpsertOne) SetSessionID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetSessionID(v)
+	})
+}
+
+// UpdateSessionID sets the "session_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateSessionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateSessionID()
+	})
+}
+
+// ClearSessionID clears the value of the "session_id" field.
+func (u *UsageLogUpsertOne) ClearSessionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearSessionID()
+	})
+}
+
+// SetClientMachineID sets the "client_machine_id" field.
+func (u *UsageLogUpsertOne) SetClientMachineID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientMachineID(v)
+	})
+}
+
+// UpdateClientMachineID sets the "client_machine_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateClientMachineID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientMachineID()
+	})
+}
+
+// ClearClientMachineID clears the value of the "client_machine_id" field.
+func (u *UsageLogUpsertOne) ClearClientMachineID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientMachineID()
+	})
+}
+
+// SetClientMachineSource sets the "client_machine_source" field.
+func (u *UsageLogUpsertOne) SetClientMachineSource(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientMachineSource(v)
+	})
+}
+
+// UpdateClientMachineSource sets the "client_machine_source" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateClientMachineSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientMachineSource()
+	})
+}
+
+// ClearClientMachineSource clears the value of the "client_machine_source" field.
+func (u *UsageLogUpsertOne) ClearClientMachineSource() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientMachineSource()
+	})
+}
+
+// SetClientDeviceID sets the "client_device_id" field.
+func (u *UsageLogUpsertOne) SetClientDeviceID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientDeviceID(v)
+	})
+}
+
+// UpdateClientDeviceID sets the "client_device_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateClientDeviceID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientDeviceID()
+	})
+}
+
+// ClearClientDeviceID clears the value of the "client_device_id" field.
+func (u *UsageLogUpsertOne) ClearClientDeviceID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientDeviceID()
+	})
+}
+
+// SetClientAccountUUID sets the "client_account_uuid" field.
+func (u *UsageLogUpsertOne) SetClientAccountUUID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientAccountUUID(v)
+	})
+}
+
+// UpdateClientAccountUUID sets the "client_account_uuid" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateClientAccountUUID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientAccountUUID()
+	})
+}
+
+// ClearClientAccountUUID clears the value of the "client_account_uuid" field.
+func (u *UsageLogUpsertOne) ClearClientAccountUUID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientAccountUUID()
+	})
+}
+
+// SetClientOriginator sets the "client_originator" field.
+func (u *UsageLogUpsertOne) SetClientOriginator(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientOriginator(v)
+	})
+}
+
+// UpdateClientOriginator sets the "client_originator" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateClientOriginator() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientOriginator()
+	})
+}
+
+// ClearClientOriginator clears the value of the "client_originator" field.
+func (u *UsageLogUpsertOne) ClearClientOriginator() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientOriginator()
+	})
+}
+
+// SetCodexInstallationID sets the "codex_installation_id" field.
+func (u *UsageLogUpsertOne) SetCodexInstallationID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexInstallationID(v)
+	})
+}
+
+// UpdateCodexInstallationID sets the "codex_installation_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCodexInstallationID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexInstallationID()
+	})
+}
+
+// ClearCodexInstallationID clears the value of the "codex_installation_id" field.
+func (u *UsageLogUpsertOne) ClearCodexInstallationID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexInstallationID()
+	})
+}
+
+// SetCodexWindowID sets the "codex_window_id" field.
+func (u *UsageLogUpsertOne) SetCodexWindowID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexWindowID(v)
+	})
+}
+
+// UpdateCodexWindowID sets the "codex_window_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCodexWindowID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexWindowID()
+	})
+}
+
+// ClearCodexWindowID clears the value of the "codex_window_id" field.
+func (u *UsageLogUpsertOne) ClearCodexWindowID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexWindowID()
+	})
+}
+
+// SetCodexSessionID sets the "codex_session_id" field.
+func (u *UsageLogUpsertOne) SetCodexSessionID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexSessionID(v)
+	})
+}
+
+// UpdateCodexSessionID sets the "codex_session_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCodexSessionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexSessionID()
+	})
+}
+
+// ClearCodexSessionID clears the value of the "codex_session_id" field.
+func (u *UsageLogUpsertOne) ClearCodexSessionID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexSessionID()
+	})
+}
+
+// SetCodexThreadID sets the "codex_thread_id" field.
+func (u *UsageLogUpsertOne) SetCodexThreadID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexThreadID(v)
+	})
+}
+
+// UpdateCodexThreadID sets the "codex_thread_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCodexThreadID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexThreadID()
+	})
+}
+
+// ClearCodexThreadID clears the value of the "codex_thread_id" field.
+func (u *UsageLogUpsertOne) ClearCodexThreadID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexThreadID()
+	})
+}
+
+// SetCodexTurnID sets the "codex_turn_id" field.
+func (u *UsageLogUpsertOne) SetCodexTurnID(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexTurnID(v)
+	})
+}
+
+// UpdateCodexTurnID sets the "codex_turn_id" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCodexTurnID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexTurnID()
+	})
+}
+
+// ClearCodexTurnID clears the value of the "codex_turn_id" field.
+func (u *UsageLogUpsertOne) ClearCodexTurnID() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexTurnID()
+	})
+}
+
+// SetTerminalHash sets the "terminal_hash" field.
+func (u *UsageLogUpsertOne) SetTerminalHash(v string) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTerminalHash(v)
+	})
+}
+
+// UpdateTerminalHash sets the "terminal_hash" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateTerminalHash() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTerminalHash()
+	})
+}
+
+// ClearTerminalHash clears the value of the "terminal_hash" field.
+func (u *UsageLogUpsertOne) ClearTerminalHash() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTerminalHash()
 	})
 }
 
@@ -4015,6 +4759,258 @@ func (u *UsageLogUpsertBulk) UpdateIPAddress() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearIPAddress() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearIPAddress()
+	})
+}
+
+// SetSessionID sets the "session_id" field.
+func (u *UsageLogUpsertBulk) SetSessionID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetSessionID(v)
+	})
+}
+
+// UpdateSessionID sets the "session_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateSessionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateSessionID()
+	})
+}
+
+// ClearSessionID clears the value of the "session_id" field.
+func (u *UsageLogUpsertBulk) ClearSessionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearSessionID()
+	})
+}
+
+// SetClientMachineID sets the "client_machine_id" field.
+func (u *UsageLogUpsertBulk) SetClientMachineID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientMachineID(v)
+	})
+}
+
+// UpdateClientMachineID sets the "client_machine_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateClientMachineID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientMachineID()
+	})
+}
+
+// ClearClientMachineID clears the value of the "client_machine_id" field.
+func (u *UsageLogUpsertBulk) ClearClientMachineID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientMachineID()
+	})
+}
+
+// SetClientMachineSource sets the "client_machine_source" field.
+func (u *UsageLogUpsertBulk) SetClientMachineSource(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientMachineSource(v)
+	})
+}
+
+// UpdateClientMachineSource sets the "client_machine_source" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateClientMachineSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientMachineSource()
+	})
+}
+
+// ClearClientMachineSource clears the value of the "client_machine_source" field.
+func (u *UsageLogUpsertBulk) ClearClientMachineSource() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientMachineSource()
+	})
+}
+
+// SetClientDeviceID sets the "client_device_id" field.
+func (u *UsageLogUpsertBulk) SetClientDeviceID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientDeviceID(v)
+	})
+}
+
+// UpdateClientDeviceID sets the "client_device_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateClientDeviceID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientDeviceID()
+	})
+}
+
+// ClearClientDeviceID clears the value of the "client_device_id" field.
+func (u *UsageLogUpsertBulk) ClearClientDeviceID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientDeviceID()
+	})
+}
+
+// SetClientAccountUUID sets the "client_account_uuid" field.
+func (u *UsageLogUpsertBulk) SetClientAccountUUID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientAccountUUID(v)
+	})
+}
+
+// UpdateClientAccountUUID sets the "client_account_uuid" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateClientAccountUUID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientAccountUUID()
+	})
+}
+
+// ClearClientAccountUUID clears the value of the "client_account_uuid" field.
+func (u *UsageLogUpsertBulk) ClearClientAccountUUID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientAccountUUID()
+	})
+}
+
+// SetClientOriginator sets the "client_originator" field.
+func (u *UsageLogUpsertBulk) SetClientOriginator(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetClientOriginator(v)
+	})
+}
+
+// UpdateClientOriginator sets the "client_originator" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateClientOriginator() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateClientOriginator()
+	})
+}
+
+// ClearClientOriginator clears the value of the "client_originator" field.
+func (u *UsageLogUpsertBulk) ClearClientOriginator() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearClientOriginator()
+	})
+}
+
+// SetCodexInstallationID sets the "codex_installation_id" field.
+func (u *UsageLogUpsertBulk) SetCodexInstallationID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexInstallationID(v)
+	})
+}
+
+// UpdateCodexInstallationID sets the "codex_installation_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCodexInstallationID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexInstallationID()
+	})
+}
+
+// ClearCodexInstallationID clears the value of the "codex_installation_id" field.
+func (u *UsageLogUpsertBulk) ClearCodexInstallationID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexInstallationID()
+	})
+}
+
+// SetCodexWindowID sets the "codex_window_id" field.
+func (u *UsageLogUpsertBulk) SetCodexWindowID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexWindowID(v)
+	})
+}
+
+// UpdateCodexWindowID sets the "codex_window_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCodexWindowID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexWindowID()
+	})
+}
+
+// ClearCodexWindowID clears the value of the "codex_window_id" field.
+func (u *UsageLogUpsertBulk) ClearCodexWindowID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexWindowID()
+	})
+}
+
+// SetCodexSessionID sets the "codex_session_id" field.
+func (u *UsageLogUpsertBulk) SetCodexSessionID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexSessionID(v)
+	})
+}
+
+// UpdateCodexSessionID sets the "codex_session_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCodexSessionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexSessionID()
+	})
+}
+
+// ClearCodexSessionID clears the value of the "codex_session_id" field.
+func (u *UsageLogUpsertBulk) ClearCodexSessionID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexSessionID()
+	})
+}
+
+// SetCodexThreadID sets the "codex_thread_id" field.
+func (u *UsageLogUpsertBulk) SetCodexThreadID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexThreadID(v)
+	})
+}
+
+// UpdateCodexThreadID sets the "codex_thread_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCodexThreadID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexThreadID()
+	})
+}
+
+// ClearCodexThreadID clears the value of the "codex_thread_id" field.
+func (u *UsageLogUpsertBulk) ClearCodexThreadID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexThreadID()
+	})
+}
+
+// SetCodexTurnID sets the "codex_turn_id" field.
+func (u *UsageLogUpsertBulk) SetCodexTurnID(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCodexTurnID(v)
+	})
+}
+
+// UpdateCodexTurnID sets the "codex_turn_id" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCodexTurnID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCodexTurnID()
+	})
+}
+
+// ClearCodexTurnID clears the value of the "codex_turn_id" field.
+func (u *UsageLogUpsertBulk) ClearCodexTurnID() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearCodexTurnID()
+	})
+}
+
+// SetTerminalHash sets the "terminal_hash" field.
+func (u *UsageLogUpsertBulk) SetTerminalHash(v string) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetTerminalHash(v)
+	})
+}
+
+// UpdateTerminalHash sets the "terminal_hash" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateTerminalHash() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateTerminalHash()
+	})
+}
+
+// ClearTerminalHash clears the value of the "terminal_hash" field.
+func (u *UsageLogUpsertBulk) ClearTerminalHash() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearTerminalHash()
 	})
 }
 

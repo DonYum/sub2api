@@ -20,19 +20,20 @@ import (
 
 // OpenAIRecordUsageInput input for recording usage
 type OpenAIRecordUsageInput struct {
-	Result             *OpenAIForwardResult
-	APIKey             *APIKey
-	User               *User
-	Account            *Account
-	Subscription       *UserSubscription
-	InboundEndpoint    string
-	UpstreamEndpoint   string
-	UserAgent          string // 请求的 User-Agent
-	IPAddress          string // 请求的客户端 IP 地址
-	SessionID          string // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
-	RequestPayloadHash string
-	APIKeyService      APIKeyQuotaUpdater
-	QuotaPlatform      string // user×platform quota platform resolved by the handler before async billing.
+	Result              *OpenAIForwardResult
+	APIKey              *APIKey
+	User                *User
+	Account             *Account
+	Subscription        *UserSubscription
+	InboundEndpoint     string
+	UpstreamEndpoint    string
+	UserAgent           string              // 请求的 User-Agent
+	IPAddress           string              // 请求的客户端 IP 地址
+	SessionID           string              // 客户端显式会话标识（session_id / X-Session-Id 等请求头），仅用于用量行会话关联
+	CodingAgentMetadata CodingAgentMetadata // coding agent 终端/客户端观测字段，仅落 usage_logs
+	RequestPayloadHash  string
+	APIKeyService       APIKeyQuotaUpdater
+	QuotaPlatform       string // user×platform quota platform resolved by the handler before async billing.
 	// PricingAt 是请求级定价时刻（请求开始捕获，与利润门的 D 同源）：高峰因子
 	// 按该时刻计算，保证同一请求从准入到扣费不中途变价。零值回退记录时刻
 	//（既有行为），供未装配的路径（图片/异步/cyber 等）沿用。
@@ -56,13 +57,14 @@ type CyberPolicyUsageInput struct {
 	OutputTokens int
 	// 渠道归因与请求级 meta，使 cyber 计费行与正常 RecordUsage 行口径一致
 	// （否则 cyber 行 channel_id 等为空，渠道维度统计会遗漏 cyber 命中）。
-	InboundEndpoint    string
-	UpstreamEndpoint   string
-	UserAgent          string
-	IPAddress          string
-	SessionID          string
-	RequestPayloadHash string
-	APIKeyService      APIKeyQuotaUpdater
+	InboundEndpoint     string
+	UpstreamEndpoint    string
+	UserAgent           string
+	IPAddress           string
+	SessionID           string
+	CodingAgentMetadata CodingAgentMetadata
+	RequestPayloadHash  string
+	APIKeyService       APIKeyQuotaUpdater
 	ChannelUsageFields
 }
 
@@ -86,20 +88,21 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 		},
 	}
 	if err := s.RecordUsage(ctx, &OpenAIRecordUsageInput{
-		Result:             result,
-		APIKey:             in.APIKey,
-		User:               in.APIKey.User,
-		Account:            in.Account,
-		Subscription:       in.Subscription,
-		InboundEndpoint:    in.InboundEndpoint,
-		UpstreamEndpoint:   in.UpstreamEndpoint,
-		UserAgent:          in.UserAgent,
-		IPAddress:          in.IPAddress,
-		SessionID:          in.SessionID,
-		RequestPayloadHash: in.RequestPayloadHash,
-		APIKeyService:      in.APIKeyService,
-		ChannelUsageFields: in.ChannelUsageFields,
-		CyberBlocked:       true,
+		Result:              result,
+		APIKey:              in.APIKey,
+		User:                in.APIKey.User,
+		Account:             in.Account,
+		Subscription:        in.Subscription,
+		InboundEndpoint:     in.InboundEndpoint,
+		UpstreamEndpoint:    in.UpstreamEndpoint,
+		UserAgent:           in.UserAgent,
+		IPAddress:           in.IPAddress,
+		SessionID:           in.SessionID,
+		CodingAgentMetadata: in.CodingAgentMetadata,
+		RequestPayloadHash:  in.RequestPayloadHash,
+		APIKeyService:       in.APIKeyService,
+		ChannelUsageFields:  in.ChannelUsageFields,
+		CyberBlocked:        true,
 	}); err != nil {
 		logger.LegacyPrintf("service.openai_gateway", "cyber usage record failed: request_id=%s err=%v", in.RequestID, err)
 	}
@@ -407,6 +410,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	// 添加 SessionID（客户端显式会话标识；缺失/无效时保持 nil）
 	usageLog.SessionID = optionalTrimmedStringPtr(input.SessionID)
+	usageLog.ClientMachineID = optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientMachineID)
+	usageLog.ClientMachineSource = optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientMachineSource)
+	usageLog.ClientDeviceID = optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientDeviceID)
+	usageLog.ClientAccountUUID = optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientAccountUUID)
+	usageLog.ClientOriginator = optionalTrimmedStringPtr(input.CodingAgentMetadata.ClientOriginator)
+	usageLog.CodexInstallationID = optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexInstallationID)
+	usageLog.CodexWindowID = optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexWindowID)
+	usageLog.CodexSessionID = optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexSessionID)
+	usageLog.CodexThreadID = optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexThreadID)
+	usageLog.CodexTurnID = optionalTrimmedStringPtr(input.CodingAgentMetadata.CodexTurnID)
+	usageLog.TerminalHash = optionalTrimmedStringPtr(input.CodingAgentMetadata.TerminalHash)
 
 	if apiKey.GroupID != nil {
 		usageLog.GroupID = apiKey.GroupID
