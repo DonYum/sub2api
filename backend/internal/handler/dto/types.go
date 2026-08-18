@@ -541,6 +541,19 @@ type UsageLog struct {
 	// SessionID is the explicit client-provided request correlation identifier
 	// (e.g. the session_id / X-Session-Id headers). Omitted when absent.
 	SessionID *string `json:"session_id,omitempty"`
+	// Coding-agent terminal metadata is allowlisted from request headers and
+	// client metadata so API key owners can inspect terminal reuse.
+	ClientMachineID     *string `json:"client_machine_id,omitempty"`
+	ClientMachineSource *string `json:"client_machine_source,omitempty"`
+	ClientDeviceID      *string `json:"client_device_id,omitempty"`
+	ClientAccountUUID   *string `json:"client_account_uuid,omitempty"`
+	ClientOriginator    *string `json:"client_originator,omitempty"`
+	CodexInstallationID *string `json:"codex_installation_id,omitempty"`
+	CodexWindowID       *string `json:"codex_window_id,omitempty"`
+	CodexSessionID      *string `json:"codex_session_id,omitempty"`
+	CodexThreadID       *string `json:"codex_thread_id,omitempty"`
+	CodexTurnID         *string `json:"codex_turn_id,omitempty"`
+	TerminalHash        *string `json:"terminal_hash,omitempty"`
 
 	// Cache TTL Override 标记
 	CacheTTLOverridden bool `json:"cache_ttl_overridden"`
