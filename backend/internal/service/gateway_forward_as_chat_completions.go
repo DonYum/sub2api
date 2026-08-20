@@ -76,6 +76,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		}
 	}
 	anthropicReq.Model = mappedModel
+	stripKiroGPTUnsupportedAnthropicFields(anthropicReq, mappedModel)
 
 	logger.L().Debug("gateway forward_as_chat_completions: model mapping applied",
 		zap.Int64("account_id", account.ID),
