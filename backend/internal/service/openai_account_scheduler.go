@@ -1057,6 +1057,15 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 		})
 		return append(primary, overflow...)
 	}
+	buildPriorityAwareSelectionOrder := func(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {
+		if req.PreserveStickyBinding {
+			return buildSelectionOrder(pool)
+		}
+		if req.StickyWeighted && (req.StickyPreviousAccountID > 0 || req.StickyAccountID > 0) {
+			return buildSelectionOrder(pool)
+		}
+		return buildOpenAIZeroInflightSelectionOrder(pool, buildSelectionOrder)
+	}
 
 	if req.RequireCompact {
 		supported := make([]openAIAccountCandidateScore, 0, len(plan.candidates))
@@ -1070,15 +1079,51 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAISelectionOrder(
 			}
 		}
 		selectionOrder := make([]openAIAccountCandidateScore, 0, len(plan.allCandidates))
-		selectionOrder = append(selectionOrder, buildSelectionOrder(supported)...)
-		selectionOrder = append(selectionOrder, buildSelectionOrder(unknown)...)
+		selectionOrder = append(selectionOrder, buildPriorityAwareSelectionOrder(supported)...)
+		selectionOrder = append(selectionOrder, buildPriorityAwareSelectionOrder(unknown)...)
 		if len(plan.staleSnapshotCompactRetry) > 0 && s.service.schedulerSnapshot != nil {
 			selectionOrder = append(selectionOrder, sortOpenAICompactRetryCandidates(plan.staleSnapshotCompactRetry)...)
 		}
 		return selectionOrder
 	}
 
-	return buildSelectionOrder(plan.candidates)
+	return buildPriorityAwareSelectionOrder(plan.candidates)
+}
+
+func buildOpenAIZeroInflightSelectionOrder(
+	pool []openAIAccountCandidateScore,
+	buildSelectionOrder func([]openAIAccountCandidateScore) []openAIAccountCandidateScore,
+) []openAIAccountCandidateScore {
+	if len(pool) == 0 || buildSelectionOrder == nil {
+		return nil
+	}
+	byPriority := make(map[int][]openAIAccountCandidateScore)
+	priorities := make([]int, 0, len(pool))
+	for _, candidate := range pool {
+		priority := openAIAccountSchedulingPriority(candidate.account)
+		if _, ok := byPriority[priority]; !ok {
+			priorities = append(priorities, priority)
+		}
+		byPriority[priority] = append(byPriority[priority], candidate)
+	}
+	sort.Ints(priorities)
+
+	selectionOrder := make([]openAIAccountCandidateScore, 0, len(pool))
+	for _, priority := range priorities {
+		group := byPriority[priority]
+		zeroInflight := make([]openAIAccountCandidateScore, 0, len(group))
+		nonZeroInflight := make([]openAIAccountCandidateScore, 0, len(group))
+		for _, candidate := range group {
+			if candidate.loadInfo == nil || candidate.loadInfo.CurrentConcurrency == 0 {
+				zeroInflight = append(zeroInflight, candidate)
+				continue
+			}
+			nonZeroInflight = append(nonZeroInflight, candidate)
+		}
+		selectionOrder = append(selectionOrder, buildSelectionOrder(zeroInflight)...)
+		selectionOrder = append(selectionOrder, buildSelectionOrder(nonZeroInflight)...)
+	}
+	return selectionOrder
 }
 
 func sortOpenAICompactRetryCandidates(pool []openAIAccountCandidateScore) []openAIAccountCandidateScore {

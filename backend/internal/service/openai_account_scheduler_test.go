@@ -3290,6 +3290,56 @@ func TestSelectTopKOpenAICandidates(t *testing.T) {
 	require.Equal(t, int64(14), topAll[3].account.ID)
 }
 
+func TestBuildOpenAISelectionOrderPrefersZeroInflightWithinPriority(t *testing.T) {
+	scheduler := &defaultOpenAIAccountScheduler{}
+	candidates := []openAIAccountCandidateScore{
+		{
+			account:  &Account{ID: 8101, Priority: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 8101, CurrentConcurrency: 1, LoadRate: 5},
+			score:    100,
+		},
+		{
+			account:  &Account{ID: 8102, Priority: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 8102, CurrentConcurrency: 0, LoadRate: 0},
+			score:    1,
+		},
+	}
+
+	order := scheduler.buildOpenAISelectionOrder(OpenAIAccountScheduleRequest{}, openAIAccountLoadPlan{
+		candidates: candidates,
+		topK:       1,
+	})
+
+	require.Len(t, order, 2)
+	require.Equal(t, int64(8102), order[0].account.ID)
+	require.Equal(t, int64(8101), order[1].account.ID)
+}
+
+func TestBuildOpenAISelectionOrderDoesNotLetZeroInflightCrossPriority(t *testing.T) {
+	scheduler := &defaultOpenAIAccountScheduler{}
+	candidates := []openAIAccountCandidateScore{
+		{
+			account:  &Account{ID: 8111, Priority: 0},
+			loadInfo: &AccountLoadInfo{AccountID: 8111, CurrentConcurrency: 1, LoadRate: 50},
+			score:    1,
+		},
+		{
+			account:  &Account{ID: 8112, Priority: 1},
+			loadInfo: &AccountLoadInfo{AccountID: 8112, CurrentConcurrency: 0, LoadRate: 0},
+			score:    100,
+		},
+	}
+
+	order := scheduler.buildOpenAISelectionOrder(OpenAIAccountScheduleRequest{}, openAIAccountLoadPlan{
+		candidates: candidates,
+		topK:       1,
+	})
+
+	require.Len(t, order, 2)
+	require.Equal(t, int64(8111), order[0].account.ID)
+	require.Equal(t, int64(8112), order[1].account.ID)
+}
+
 func TestBuildOpenAIWeightedSelectionOrder_DeterministicBySessionSeed(t *testing.T) {
 	candidates := []openAIAccountCandidateScore{
 		{
