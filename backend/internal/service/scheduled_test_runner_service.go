@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -12,12 +15,17 @@ import (
 
 const scheduledTestDefaultMaxWorkers = 10
 
+type scheduledTestOpsRecorder interface {
+	RecordError(ctx context.Context, entry *OpsInsertErrorLogInput) error
+}
+
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
 	planRepo       ScheduledTestPlanRepository
 	scheduledSvc   *ScheduledTestService
 	accountTestSvc *AccountTestService
 	rateLimitSvc   *RateLimitService
+	opsRecorder    scheduledTestOpsRecorder
 	cfg            *config.Config
 
 	cron      *cron.Cron
@@ -40,6 +48,13 @@ func NewScheduledTestRunnerService(
 		rateLimitSvc:   rateLimitSvc,
 		cfg:            cfg,
 	}
+}
+
+func (s *ScheduledTestRunnerService) SetOpsRecorder(recorder scheduledTestOpsRecorder) {
+	if s == nil {
+		return
+	}
+	s.opsRecorder = recorder
 }
 
 // Start begins the cron ticker (every minute).
@@ -130,6 +145,10 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d SaveResult error: %v", plan.ID, err)
 	}
 
+	if result.Status == "failed" {
+		s.recordOpsError(ctx, plan, result)
+	}
+
 	// Auto-recover account if test succeeded and auto_recover is enabled.
 	if result.Status == "success" && plan.AutoRecover {
 		s.tryRecoverAccount(ctx, plan.AccountID, plan.ID)
@@ -144,6 +163,53 @@ func (s *ScheduledTestRunnerService) runOnePlan(ctx context.Context, plan *Sched
 	if err := s.planRepo.UpdateAfterRun(ctx, plan.ID, time.Now(), nextRun); err != nil {
 		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d UpdateAfterRun error: %v", plan.ID, err)
 	}
+}
+
+func (s *ScheduledTestRunnerService) recordOpsError(ctx context.Context, plan *ScheduledTestPlan, result *ScheduledTestResult) {
+	if s == nil || s.opsRecorder == nil || plan == nil || result == nil {
+		return
+	}
+	entry := buildScheduledTestOpsErrorLog(plan, result)
+	if entry == nil {
+		return
+	}
+	if err := s.opsRecorder.RecordError(ctx, entry); err != nil {
+		logger.LegacyPrintf("service.scheduled_test_runner", "[ScheduledTestRunner] plan=%d RecordError failed: %v", plan.ID, err)
+	}
+}
+
+func buildScheduledTestOpsErrorLog(plan *ScheduledTestPlan, result *ScheduledTestResult) *OpsInsertErrorLogInput {
+	if plan == nil || result == nil || result.Status != "failed" {
+		return nil
+	}
+
+	accountID := plan.AccountID
+	model := strings.TrimSpace(plan.ModelID)
+	statusCode := http.StatusInternalServerError
+	message := strings.TrimSpace(result.ErrorMessage)
+	if message == "" {
+		message = "scheduled account test failed"
+	}
+	entry := &OpsInsertErrorLogInput{
+		RequestID:      fmt.Sprintf("scheduled-test-%d-%d", plan.ID, result.StartedAt.UnixNano()),
+		AccountID:      &accountID,
+		Model:          model,
+		RequestedModel: strings.TrimSpace(plan.ModelID),
+		RequestPath:    fmt.Sprintf("scheduled_test:%d", plan.ID),
+		Stream:         true,
+		ErrorPhase:     "scheduled_test",
+		ErrorType:      "upstream_error",
+		Severity:       "P1",
+		StatusCode:     statusCode,
+		ErrorMessage:   message,
+		ErrorSource:    "scheduled_test",
+		ErrorOwner:     "gateway",
+		CreatedAt:      result.FinishedAt,
+	}
+	if entry.CreatedAt.IsZero() {
+		entry.CreatedAt = time.Now()
+	}
+	return entry
 }
 
 // tryRecoverAccount attempts to recover an account from recoverable runtime state.

@@ -562,9 +562,11 @@ func ProvideScheduledTestRunnerService(
 	scheduledSvc *ScheduledTestService,
 	accountTestSvc *AccountTestService,
 	rateLimitSvc *RateLimitService,
+	opsService *OpsService,
 	cfg *config.Config,
 ) *ScheduledTestRunnerService {
 	svc := NewScheduledTestRunnerService(planRepo, scheduledSvc, accountTestSvc, rateLimitSvc, cfg)
+	svc.SetOpsRecorder(opsService)
 	svc.Start()
 	return svc
 }
