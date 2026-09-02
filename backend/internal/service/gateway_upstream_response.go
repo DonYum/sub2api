@@ -20,6 +20,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 
 	"github.com/gin-gonic/gin"
 )
@@ -647,6 +648,174 @@ type streamingResult struct {
 	clientDisconnect bool // 客户端是否在流式传输过程中断开
 }
 
+type anthropicStreamUsageObservation struct {
+	Platform                         string
+	AccountID                        int64
+	Model                            string
+	UpstreamModel                    string
+	Passthrough                      bool
+	ParsedJSONEvents                 int
+	UsageEvents                      int
+	MessageStartUsageEvents          int
+	MessageDeltaUsageEvents          int
+	OtherUsageEvents                 int
+	StandardCacheFieldEvents         int
+	CachedTokensEvents               int
+	CacheCreationBreakdownEvents     int
+	PositiveStandardCacheFieldEvents int
+	PositiveCachedTokensEvents       int
+	PositiveCacheBreakdownEvents     int
+}
+
+func newAnthropicStreamUsageObservation(account *Account, model, upstreamModel string, passthrough bool) *anthropicStreamUsageObservation {
+	obs := &anthropicStreamUsageObservation{
+		Model:         strings.TrimSpace(model),
+		UpstreamModel: strings.TrimSpace(upstreamModel),
+		Passthrough:   passthrough,
+	}
+	if account != nil {
+		obs.Platform = account.Platform
+		obs.AccountID = account.ID
+	}
+	return obs
+}
+
+func (o *anthropicStreamUsageObservation) observeData(data string) {
+	if o == nil {
+		return
+	}
+	data = strings.TrimSpace(data)
+	if data == "" || data == "[DONE]" {
+		return
+	}
+	var event map[string]any
+	if err := json.Unmarshal([]byte(data), &event); err != nil {
+		return
+	}
+	o.observeEvent(event)
+}
+
+func (o *anthropicStreamUsageObservation) observeEvent(event map[string]any) {
+	if o == nil || len(event) == 0 {
+		return
+	}
+	o.ParsedJSONEvents++
+	eventType, _ := event["type"].(string)
+	usageMaps := anthropicStreamUsageMaps(event)
+	if len(usageMaps) == 0 {
+		return
+	}
+	o.UsageEvents++
+	switch eventType {
+	case "message_start":
+		o.MessageStartUsageEvents++
+	case "message_delta":
+		o.MessageDeltaUsageEvents++
+	default:
+		o.OtherUsageEvents++
+	}
+	for _, usage := range usageMaps {
+		o.observeUsageMap(usage)
+	}
+}
+
+func anthropicStreamUsageMaps(event map[string]any) []map[string]any {
+	maps := make([]map[string]any, 0, 2)
+	if msg, ok := event["message"].(map[string]any); ok {
+		if usage, ok := msg["usage"].(map[string]any); ok && len(usage) > 0 {
+			maps = append(maps, usage)
+		}
+	}
+	if usage, ok := event["usage"].(map[string]any); ok && len(usage) > 0 {
+		maps = append(maps, usage)
+	}
+	return maps
+}
+
+func (o *anthropicStreamUsageObservation) observeUsageMap(usage map[string]any) {
+	if o == nil || len(usage) == 0 {
+		return
+	}
+	if _, ok := usage["cache_creation_input_tokens"]; ok {
+		o.StandardCacheFieldEvents++
+		if v, exists := parseSSEUsageInt(usage["cache_creation_input_tokens"]); exists && v > 0 {
+			o.PositiveStandardCacheFieldEvents++
+		}
+	}
+	if _, ok := usage["cache_read_input_tokens"]; ok {
+		o.StandardCacheFieldEvents++
+		if v, exists := parseSSEUsageInt(usage["cache_read_input_tokens"]); exists && v > 0 {
+			o.PositiveStandardCacheFieldEvents++
+		}
+	}
+	if _, ok := usage["cached_tokens"]; ok {
+		o.CachedTokensEvents++
+		if v, exists := parseSSEUsageInt(usage["cached_tokens"]); exists && v > 0 {
+			o.PositiveCachedTokensEvents++
+		}
+	}
+	if cc, ok := usage["cache_creation"].(map[string]any); ok {
+		_, has5m := cc["ephemeral_5m_input_tokens"]
+		_, has1h := cc["ephemeral_1h_input_tokens"]
+		if has5m || has1h {
+			o.CacheCreationBreakdownEvents++
+			v5m, _ := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"])
+			v1h, _ := parseSSEUsageInt(cc["ephemeral_1h_input_tokens"])
+			if v5m > 0 || v1h > 0 {
+				o.PositiveCacheBreakdownEvents++
+			}
+		}
+	}
+}
+
+func (o *anthropicStreamUsageObservation) log(usage *ClaudeUsage, sawTerminalEvent, clientDisconnected bool) {
+	if o == nil {
+		return
+	}
+	finalInput := 0
+	finalOutput := 0
+	finalCacheCreation := 0
+	finalCacheRead := 0
+	finalCacheCreation5m := 0
+	finalCacheCreation1h := 0
+	if usage != nil {
+		finalInput = usage.InputTokens
+		finalOutput = usage.OutputTokens
+		finalCacheCreation = usage.CacheCreationInputTokens
+		finalCacheRead = usage.CacheReadInputTokens
+		finalCacheCreation5m = usage.CacheCreation5mTokens
+		finalCacheCreation1h = usage.CacheCreation1hTokens
+	}
+	logger.L().With(
+		zap.String("component", "service.gateway"),
+		zap.String("platform", o.Platform),
+		zap.Int64("account_id", o.AccountID),
+		zap.String("model", o.Model),
+		zap.String("upstream_model", o.UpstreamModel),
+		zap.Bool("passthrough", o.Passthrough),
+		zap.Int("parsed_json_events", o.ParsedJSONEvents),
+		zap.Int("usage_events", o.UsageEvents),
+		zap.Int("message_start_usage_events", o.MessageStartUsageEvents),
+		zap.Int("message_delta_usage_events", o.MessageDeltaUsageEvents),
+		zap.Int("other_usage_events", o.OtherUsageEvents),
+		zap.Int("standard_cache_field_events", o.StandardCacheFieldEvents),
+		zap.Int("cached_tokens_events", o.CachedTokensEvents),
+		zap.Int("cache_creation_breakdown_events", o.CacheCreationBreakdownEvents),
+		zap.Int("positive_standard_cache_field_events", o.PositiveStandardCacheFieldEvents),
+		zap.Int("positive_cached_tokens_events", o.PositiveCachedTokensEvents),
+		zap.Int("positive_cache_breakdown_events", o.PositiveCacheBreakdownEvents),
+		zap.Bool("saw_terminal_event", sawTerminalEvent),
+		zap.Bool("client_disconnected", clientDisconnected),
+		zap.Int("final_input_tokens", finalInput),
+		zap.Int("final_output_tokens", finalOutput),
+		zap.Int("final_cache_creation_tokens", finalCacheCreation),
+		zap.Int("final_cache_read_tokens", finalCacheRead),
+		zap.Int("final_cache_creation_5m_tokens", finalCacheCreation5m),
+		zap.Int("final_cache_creation_1h_tokens", finalCacheCreation1h),
+		zap.Bool("final_cache_double_zero", finalCacheCreation == 0 && finalCacheRead == 0),
+	).Info("anthropic_stream_usage_observation")
+}
+
 // hasObservedTokens 报告流式过程中是否已观测到任何上游计量的 token。
 func (u *ClaudeUsage) hasObservedTokens() bool {
 	if u == nil {
@@ -717,6 +886,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	}
 
 	usage := &ClaudeUsage{}
+	usageObservation := newAnthropicStreamUsageObservation(account, originalModel, mappedModel, false)
 	var firstTokenMs *int
 	scanner := bufio.NewScanner(resp.Body)
 	// 设置更大的buffer以处理长行
@@ -833,6 +1003,9 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 	needModelReplace := originalModel != mappedModel
 	clientDisconnected := false // 客户端断开标志，断开后继续读取上游以获取完整usage
 	sawTerminalEvent := false
+	defer func() {
+		usageObservation.log(usage, sawTerminalEvent, clientDisconnected)
+	}()
 	useNoopDeltaKeepalive := c != nil && c.Request != nil && shouldUseClaudeCodeNoopDeltaKeepalive(c.GetHeader("User-Agent"))
 	noopDeltaKeepaliveBlockIndex := -1
 	noopDeltaKeepaliveDeltaType := ""
@@ -969,6 +1142,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		usagePatch := s.extractSSEUsagePatch(event)
+		usageObservation.observeEvent(event)
 		if anthropicStreamEventIsTerminal(eventName, dataLine) {
 			sawTerminalEvent = true
 		}
@@ -1273,6 +1447,17 @@ func mergeSSEUsagePatch(usage *ClaudeUsage, patch *sseUsagePatch) {
 	}
 	if patch.hasCacheCreation1h {
 		usage.CacheCreation1hTokens = patch.cacheCreation1hTokens
+	}
+	backfillCacheCreationAggregateFromBreakdown(usage)
+}
+
+func backfillCacheCreationAggregateFromBreakdown(usage *ClaudeUsage) {
+	if usage == nil || usage.CacheCreationInputTokens > 0 {
+		return
+	}
+	total := usage.CacheCreation5mTokens + usage.CacheCreation1hTokens
+	if total > 0 {
+		usage.CacheCreationInputTokens = total
 	}
 }
 
