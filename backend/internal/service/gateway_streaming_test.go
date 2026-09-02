@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -108,10 +109,9 @@ func TestAnthropicStreamUsageObservationCountsUsageMetadata(t *testing.T) {
 		false,
 	)
 
-	obs.observeData(`{"type":"message_start","message":{"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cached_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}}}`)
-	obs.observeData(`{"type":"message_delta","usage":{"output_tokens":5}}`)
-	obs.observeData(`{"type":"content_block_delta","delta":{"type":"text_delta","text":"sensitive text is ignored"}}`)
-	obs.observeData("[DONE]")
+	observeAnthropicStreamUsageEvent(t, obs, `{"type":"message_start","message":{"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cached_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}}}`)
+	observeAnthropicStreamUsageEvent(t, obs, `{"type":"message_delta","usage":{"output_tokens":5}}`)
+	observeAnthropicStreamUsageEvent(t, obs, `{"type":"content_block_delta","delta":{"type":"text_delta","text":"sensitive text is ignored"}}`)
 
 	require.Equal(t, PlatformAnthropic, obs.Platform)
 	require.Equal(t, int64(17), obs.AccountID)
@@ -125,6 +125,13 @@ func TestAnthropicStreamUsageObservationCountsUsageMetadata(t *testing.T) {
 	require.Equal(t, 0, obs.PositiveStandardCacheFieldEvents)
 	require.Equal(t, 1, obs.PositiveCachedTokensEvents)
 	require.Equal(t, 1, obs.PositiveCacheBreakdownEvents)
+}
+
+func observeAnthropicStreamUsageEvent(t *testing.T, obs *anthropicStreamUsageObservation, raw string) {
+	t.Helper()
+	var event map[string]any
+	require.NoError(t, json.Unmarshal([]byte(raw), &event))
+	obs.observeEvent(event)
 }
 
 func TestParseSSEUsage_InvalidJSON(t *testing.T) {

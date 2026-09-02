@@ -680,21 +680,6 @@ func newAnthropicStreamUsageObservation(account *Account, model, upstreamModel s
 	return obs
 }
 
-func (o *anthropicStreamUsageObservation) observeData(data string) {
-	if o == nil {
-		return
-	}
-	data = strings.TrimSpace(data)
-	if data == "" || data == "[DONE]" {
-		return
-	}
-	var event map[string]any
-	if err := json.Unmarshal([]byte(data), &event); err != nil {
-		return
-	}
-	o.observeEvent(event)
-}
-
 func (o *anthropicStreamUsageObservation) observeEvent(event map[string]any) {
 	if o == nil || len(event) == 0 {
 		return

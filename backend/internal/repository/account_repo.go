@@ -2267,12 +2267,18 @@ func (r *accountRepository) ApplyOpenAICapacityBreaker(ctx context.Context, inpu
 		return nil, errors.New("account repository client is nil")
 	}
 
-	tx, err := r.client.Tx(ctx)
-	if err != nil {
-		return nil, err
+	tx := dbent.TxFromContext(ctx)
+	ownsTx := tx == nil
+	if ownsTx {
+		var err error
+		tx, err = r.client.Tx(ctx)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = tx.Rollback() }()
+		ctx = dbent.NewTxContext(ctx, tx)
 	}
-	defer func() { _ = tx.Rollback() }()
-	txCtx := dbent.NewTxContext(ctx, tx)
+	txCtx := ctx
 	client := tx.Client()
 
 	if _, err := client.ExecContext(txCtx, `
@@ -2366,8 +2372,10 @@ func (r *accountRepository) ApplyOpenAICapacityBreaker(ctx context.Context, inpu
 	if err := enqueueSchedulerOutbox(txCtx, client, service.SchedulerOutboxEventAccountChanged, &input.AccountID, nil, nil); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
+	if ownsTx {
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
 	}
 	r.syncSchedulerAccountSnapshot(ctx, input.AccountID)
 	return decision, nil

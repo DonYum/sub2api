@@ -414,13 +414,9 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	}
 
 	usage := &ClaudeUsage{}
-	usageObservation := newAnthropicStreamUsageObservation(account, model, model, true)
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
-	defer func() {
-		usageObservation.log(usage, sawTerminalEvent, clientDisconnected)
-	}()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -551,7 +547,6 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					firstTokenMs = &ms
 				}
 				s.parseSSEUsagePassthrough(data, usage)
-				usageObservation.observeData(trimmed)
 			} else {
 				trimmed := strings.TrimSpace(line)
 				if strings.HasPrefix(trimmed, "event:") && anthropicStreamEventIsTerminal(strings.TrimSpace(strings.TrimPrefix(trimmed, "event:")), "") {
