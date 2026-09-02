@@ -2267,19 +2267,27 @@ func (r *accountRepository) ApplyOpenAICapacityBreaker(ctx context.Context, inpu
 		return nil, errors.New("account repository client is nil")
 	}
 
-	tx := dbent.TxFromContext(ctx)
-	ownsTx := tx == nil
-	if ownsTx {
+	baseCtx := ctx
+	contextTx := dbent.TxFromContext(ctx)
+	client := r.client
+	var tx *dbent.Tx
+	ownsTx := false
+	if contextTx != nil {
+		client = contextTx.Client()
+	} else {
 		var err error
 		tx, err = r.client.Tx(ctx)
-		if err != nil {
+		if err != nil && !errors.Is(err, dbent.ErrTxStarted) {
 			return nil, err
 		}
-		defer func() { _ = tx.Rollback() }()
-		ctx = dbent.NewTxContext(ctx, tx)
+		if tx != nil {
+			ownsTx = true
+			defer func() { _ = tx.Rollback() }()
+			ctx = dbent.NewTxContext(ctx, tx)
+			client = tx.Client()
+		}
 	}
 	txCtx := ctx
-	client := tx.Client()
 
 	if _, err := client.ExecContext(txCtx, `
 		SELECT pg_advisory_xact_lock(hashtext('openai_capacity_breaker'), hashtext($1::text || ':' || $2::text))
@@ -2377,7 +2385,9 @@ func (r *accountRepository) ApplyOpenAICapacityBreaker(ctx context.Context, inpu
 			return nil, err
 		}
 	}
-	r.syncSchedulerAccountSnapshot(ctx, input.AccountID)
+	if contextTx == nil {
+		r.syncSchedulerAccountSnapshot(baseCtx, input.AccountID)
+	}
 	return decision, nil
 }
 
