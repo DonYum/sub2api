@@ -54,6 +54,41 @@ describe('UseKeyModal', () => {
     expect(configToml).toContain('[features]\ngoals = true')
   })
 
+  it('includes GPT-6 in the OpenCode model catalog', async () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'openai'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const opencodeTab = wrapper.findAll('button').find((button) =>
+      button.text().includes('keys.useKeyModal.cliTabs.opencode')
+    )
+
+    expect(opencodeTab).toBeDefined()
+    await opencodeTab!.trigger('click')
+    await nextTick()
+
+    const codeBlock = wrapper.find('pre code')
+    const parsed = JSON.parse(codeBlock.text())
+
+    expect(parsed.provider.openai.models['gpt-6'].name).toBe('GPT-6')
+    expect(parsed.provider.openai.models['gpt-6-luna'].name).toBe('GPT-6 Luna')
+  })
+
   it('renders GPT-5.5 and goals feature in OpenAI Codex WebSocket config', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
