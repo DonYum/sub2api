@@ -14,15 +14,19 @@
 
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
     <template v-else>
-      <button
-        v-if="isTempUnschedulable"
-        type="button"
-        :class="['badge text-xs', statusClass, 'cursor-pointer']"
-        :title="t('admin.accounts.status.viewTempUnschedDetails')"
-        @click="handleTempUnschedClick"
-      >
-        {{ statusText }}
-      </button>
+      <div v-if="isTempUnschedulable" class="flex flex-col items-center gap-1">
+        <button
+          type="button"
+          :class="['badge text-xs', statusClass, 'cursor-pointer']"
+          :title="t('admin.accounts.status.viewTempUnschedDetails')"
+          @click="handleTempUnschedClick"
+        >
+          {{ statusText }}
+        </button>
+        <span class="max-w-[180px] text-center text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+          {{ tempUnschedRecoveryText }}
+        </span>
+      </div>
       <span v-else :class="['badge text-xs', statusClass]">
         {{ statusText }}
       </span>
@@ -95,7 +99,7 @@
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ t('admin.accounts.status.creditsExhausted') }}
-          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- 正在走积分（模型限流但积分可用）-->
         <span
@@ -104,7 +108,7 @@
         >
           <span>⚡</span>
           {{ formatScopeName(item.model) }}
-          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- 普通模型限流 -->
         <span
@@ -113,23 +117,45 @@
         >
           <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
           {{ formatScopeName(item.model) }}
-          <span class="text-[10px] opacity-70">{{ formatModelResetTime(item.reset_at) }}</span>
+          <span class="text-[10px] opacity-70">{{ formatCountdown(item.reset_at) }}</span>
         </span>
         <!-- Tooltip -->
         <div
-          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-56 -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+          class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-max max-w-[320px] -translate-x-1/2 whitespace-normal rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
         >
-          {{
-            item.kind === 'credits_exhausted'
-              ? t('admin.accounts.status.creditsExhaustedUntil', { time: formatTime(item.reset_at) })
-              : item.kind === 'credits_active'
-                ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) })
-                : t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatTime(item.reset_at) })
-          }}
+          <div>
+            {{
+              item.kind === 'credits_exhausted'
+                ? t('admin.accounts.status.creditsExhaustedUntil', { time: formatDateTimeToMinute(item.reset_at) })
+                : item.kind === 'credits_active'
+                  ? t('admin.accounts.status.modelCreditOveragesUntil', { model: formatScopeName(item.model), time: formatDateTimeToMinute(item.reset_at) })
+                  : t('admin.accounts.status.modelRateLimitedUntil', { model: formatScopeName(item.model), time: formatDateTimeToMinute(item.reset_at) })
+            }}
+          </div>
+          <div v-if="item.reason" class="mt-1 max-w-[300px] whitespace-pre-wrap break-words text-gray-300">
+            {{ item.reason }}
+          </div>
           <div
             class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
           ></div>
         </div>
+      </div>
+    </div>
+
+    <div v-if="capacityBreakerPermanentText" class="group relative">
+      <span
+        class="inline-flex items-center gap-1 rounded bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400"
+      >
+        <Icon name="exclamationTriangle" size="xs" :stroke-width="2" />
+        CAP
+      </span>
+      <div
+        class="pointer-events-none absolute bottom-full left-1/2 z-50 mb-2 w-72 -translate-x-1/2 whitespace-pre-wrap break-words rounded bg-gray-900 px-3 py-2 text-center text-xs leading-relaxed text-white opacity-0 transition-opacity group-hover:opacity-100 dark:bg-gray-700"
+      >
+        {{ capacityBreakerPermanentText }}
+        <div
+          class="absolute left-1/2 top-full -translate-x-1/2 border-4 border-transparent border-t-gray-900 dark:border-t-gray-700"
+        ></div>
       </div>
     </div>
 
@@ -159,7 +185,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { Account } from '@/types'
-import { formatCountdown, formatDateTime, formatCountdownWithSuffix, formatTime } from '@/utils/format'
+import { formatCountdown, formatDateTime, formatDateTimeToMinute, formatCountdownWithSuffix, formatTime } from '@/utils/format'
 
 const { t } = useI18n()
 
@@ -181,13 +207,14 @@ type AccountModelStatusItem = {
   kind: 'rate_limit' | 'credits_exhausted' | 'credits_active'
   model: string
   reset_at: string
+  reason?: string
 }
 
 // Computed: active model statuses (普通模型限流 + 积分耗尽 + 走积分中)
 const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
   const extra = props.account.extra as Record<string, unknown> | undefined
   const modelLimits = extra?.model_rate_limits as
-    | Record<string, { rate_limited_at: string; rate_limit_reset_at: string }>
+    | Record<string, { rate_limited_at: string; rate_limit_reset_at: string; reason?: string }>
     | undefined
   const now = new Date()
   const items: AccountModelStatusItem[] = []
@@ -204,13 +231,13 @@ const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
 
     if (model === 'AICredits') {
       // AICredits key → 积分已用尽
-      items.push({ kind: 'credits_exhausted', model, reset_at: info.rate_limit_reset_at })
+      items.push({ kind: 'credits_exhausted', model, reset_at: info.rate_limit_reset_at, reason: info.reason })
     } else if (allowOverages && !hasActiveAICredits) {
       // 普通模型限流 + overages 启用 + 积分可用 → 正在走积分
-      items.push({ kind: 'credits_active', model, reset_at: info.rate_limit_reset_at })
+      items.push({ kind: 'credits_active', model, reset_at: info.rate_limit_reset_at, reason: info.reason })
     } else {
       // 普通模型限流
-      items.push({ kind: 'rate_limit', model, reset_at: info.rate_limit_reset_at })
+      items.push({ kind: 'rate_limit', model, reset_at: info.rate_limit_reset_at, reason: info.reason })
     }
   }
 
@@ -225,9 +252,11 @@ const formatScopeName = (scope: string): string => {
     'claude-opus-4-6-thinking': 'COpus46T',
     'claude-opus-4-7': 'COpus47',
     'claude-opus-4-8': 'COpus48',
+    'claude-opus-5': 'COpus5',
     'claude-sonnet-4-6': 'CSon46',
     'claude-sonnet-4-5': 'CSon45',
     'claude-sonnet-4-5-thinking': 'CSon45T',
+    'claude-sonnet-5': 'CSon5',
     // Gemini 2.5 系列
     'gemini-2.5-flash': 'G25F',
     'gemini-2.5-flash-lite': 'G25FL',
@@ -258,19 +287,23 @@ const formatScopeName = (scope: string): string => {
   return aliases[scope] || scope
 }
 
-const formatModelResetTime = (resetAt: string): string => {
-  const date = new Date(resetAt)
-  const now = new Date()
-  const diffMs = date.getTime() - now.getTime()
-  if (diffMs <= 0) return ''
-  const totalSecs = Math.floor(diffMs / 1000)
-  const h = Math.floor(totalSecs / 3600)
-  const m = Math.floor((totalSecs % 3600) / 60)
-  const s = totalSecs % 60
-  if (h > 0) return `${h}h${m}m`
-  if (m > 0) return `${m}m${s}s`
-  return `${s}s`
-}
+const capacityBreakerPermanentText = computed(() => {
+  const extra = props.account.extra as Record<string, unknown> | undefined
+  const breaker = extra?.openai_capacity_breaker as
+    | { models?: Record<string, { permanent?: boolean; level?: number; reason?: string; message?: string; updated_at?: string }> }
+    | undefined
+  const models = breaker?.models
+  if (!models) return ''
+  const permanent = Object.entries(models).find(([, value]) => value?.permanent)
+  if (!permanent) return ''
+  const [model, state] = permanent
+  const parts = [`OpenAI capacity breaker: ${formatScopeName(model)}`]
+  if (state.level) parts.push(`level=${state.level}`)
+  if (state.reason) parts.push(state.reason)
+  if (state.message) parts.push(state.message)
+  if (state.updated_at) parts.push(formatDateTimeToMinute(state.updated_at))
+  return parts.join('\n')
+})
 
 // Computed: is overloaded (529)
 const isOverloaded = computed(() => {
@@ -312,6 +345,13 @@ const rateLimitResumeText = computed(() => {
 // Computed: countdown text for overload (529)
 const overloadCountdown = computed(() => {
   return formatCountdownWithSuffix(props.account.overload_until)
+})
+
+const tempUnschedRecoveryText = computed(() => {
+  if (!isTempUnschedulable.value || !props.account.temp_unschedulable_until) return ''
+  return t('admin.accounts.status.tempUnschedulableUntil', {
+    time: formatDateTime(props.account.temp_unschedulable_until)
+  })
 })
 
 // Computed: status badge class

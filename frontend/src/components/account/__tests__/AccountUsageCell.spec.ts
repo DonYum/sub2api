@@ -72,6 +72,47 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('renders eligible Ollama Cloud state inside the unified usage cell', () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9001,
+          platform: 'openai',
+          type: 'apikey',
+          ollama_cloud_usage: {
+            account_id: 9001,
+            eligible: true,
+            configured: true,
+            auto_refresh_enabled: true,
+            encryption_key_configured: true,
+            snapshot: {
+              status: 'ok',
+              last_attempt_at: '2026-07-23T00:00:00Z',
+              next_refresh_at: '2026-07-23T01:00:00Z',
+              data: {
+                five_hour: { used_percent: 12 },
+                seven_day: { used_percent: 34 }
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          OllamaCloudUsageCell: {
+            props: ['account'],
+            template: '<div data-test="embedded-ollama">{{ account.ollama_cloud_usage.snapshot.data.five_hour.used_percent }}</div>'
+          },
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    expect(wrapper.get('[data-test="embedded-ollama"]').text()).toBe('12')
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
@@ -471,6 +512,50 @@ describe('AccountUsageCell', () => {
 	expect(wrapper.text()).toContain('5h|0|200')
   })
 
+  it('OpenAI 重置响应更新账号行时不会额外拉取 usage', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 0,
+        resets_at: null,
+        remaining_seconds: 0
+      },
+      seven_day: null
+    })
+    const account = makeAccount({
+      id: 2004,
+      platform: 'openai',
+      type: 'oauth',
+      updated_at: '2026-03-07T10:00:00Z',
+      extra: {}
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true,
+          OpenAIQuotaResetCell: {
+            props: ['account'],
+            emits: ['account-updated'],
+            template: '<button data-test="quota-reset-result" @click="$emit(\'account-updated\', { ...account, updated_at: \'2026-03-07T10:01:00Z\' })" />'
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+
+    await wrapper.get('[data-test="quota-reset-result"]').trigger('click')
+    const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
+    expect(updatedAccount?.updated_at).toBe('2026-03-07T10:01:00Z')
+
+    await wrapper.setProps({ account: updatedAccount as Account })
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledTimes(1)
+  })
+
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {
 	getUsage.mockResolvedValue({
 	  five_hour: {
@@ -564,6 +649,365 @@ describe('AccountUsageCell', () => {
 		const badges = wrapper.findAll('span[title]')
 		expect(badges.some(node => node.attributes('title') === 'usage.accountBilled')).toBe(true)
 		expect(badges.some(node => node.attributes('title') === 'usage.userBilled')).toBe(true)
+  })
+
+  it('Grok OAuth compact UI drops local chips and header quota bars', async () => {
+    getUsage.mockResolvedValue({
+      grok_local_usage: {
+        requests: 4,
+        tokens: 1200,
+        cost: 0.12,
+        standard_cost: 0.12,
+        user_cost: 0.34
+      },
+      grok_request_quota: {
+        limit: 10,
+        remaining: -2,
+        reset_at: '2026-07-09T16:00:00Z'
+      },
+      grok_quota_snapshot_state: 'observed'
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 3861, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledWith(3861)
+    expect(wrapper.text()).not.toContain('4 req')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokRequests|')
+  })
+
+  it('Grok paid monthly limits show 30d bar without free 24h', async () => {
+    getUsage.mockResolvedValue({
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: null,
+        used_percent: 12,
+        monthly_limit_cents: 25_000,
+        used_cents: 3_000,
+        plan: ''
+      },
+      grok_entitlement_status: 'free',
+      grok_token_quota: { limit: 1_000, remaining: 250 }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4402, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('30d|')
+    expect(wrapper.text()).not.toContain('24h|')
+  })
+
+  it('Grok OAuth uses the official weekly billing percentage when available', async () => {
+    getUsage.mockResolvedValue({
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: 37,
+        period_end: '2026-07-16T03:25:00Z',
+        plan: 'SuperGrok'
+      },
+      grok_local_usage: {
+        requests: 5,
+        tokens: 2_200_000,
+        cost: 4.42,
+        standard_cost: 4.42,
+        user_cost: 0.44
+      },
+      grok_request_quota: { limit: 100, remaining: 100 },
+      grok_token_quota: { limit: 2_000_000, remaining: 2_000_000 }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4201, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'remainingCapacity'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}|{{ remainingCapacity }}</div>'
+          },
+          AccountQuotaInfo: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('7d|37|2026-07-16T03:25:00Z')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokRequests|')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokTokens|')
+    expect(wrapper.text()).not.toContain('2M|')
+  })
+
+  it.each([
+    { tokens: 0, expected: 0 },
+    { tokens: 500_000, expected: 50 },
+    { tokens: 1_000_000, expected: 100 },
+    { tokens: 1_100_000, expected: 100 }
+  ])('Grok Free derives its 1M quota from local tokens: $tokens -> $expected%', async ({ tokens, expected }) => {
+    getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
+      grok_billing: {
+        period_type: 'weekly',
+        usage_percent: null,
+        plan: ''
+      },
+      grok_local_usage_24h: {
+        requests: 5,
+        tokens,
+        cost: 0,
+        standard_cost: 0,
+        user_cost: 0
+      },
+      grok_request_quota: { limit: 100, remaining: 100 },
+      grok_token_quota: { limit: 1_000_000, remaining: 1_000_000 }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4300 + expected, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain(`24h|${expected}`)
+    expect(wrapper.findAll('.usage-bar')).toHaveLength(1)
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokRequests|')
+    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.grokTokens|')
+    expect(wrapper.text()).not.toContain('7d|')
+  })
+
+  it('Grok Free uses rolling 24h usage instead of today-only usage', async () => {
+    getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
+      grok_billing: { period_type: 'weekly', usage_percent: null, plan: '' },
+      grok_local_usage: {
+        requests: 2,
+        tokens: 250_000,
+        cost: 0,
+        standard_cost: 0
+      },
+      grok_local_usage_24h: {
+        requests: 12,
+        tokens: 750_000,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4398, platform: 'grok', type: 'oauth', extra: {} }),
+        todayStats: {
+          requests: 2,
+          tokens: 200_000,
+          cost: 0,
+          standard_cost: 0
+        }
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'title'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ title }}</div>'
+          },
+          AccountQuotaInfo: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('24h|75|admin.accounts.usageWindow.grokFreeQuota24hHint')
+    expect(wrapper.text()).not.toContain('7d|')
+    expect(wrapper.text()).not.toContain('200.0K')
+    expect(wrapper.text()).not.toContain('250.0K')
+  })
+
+  it('Grok Free does not substitute today stats when rolling 24h usage is unavailable', async () => {
+    getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
+      grok_billing: { period_type: 'weekly', usage_percent: null, plan: '' },
+      grok_local_usage: {
+        requests: 1,
+        tokens: 250_000,
+        cost: 0,
+        standard_cost: 0,
+        user_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4399, platform: 'grok', type: 'oauth', extra: {} }),
+        todayStats: {
+          requests: 4,
+          tokens: 1_000_000,
+          cost: 0,
+          standard_cost: 0,
+          user_cost: 0
+        }
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findAll('.usage-bar')).toHaveLength(0)
+    expect(wrapper.text()).not.toContain('24h|')
+    expect(wrapper.text()).not.toContain('1.0M')
+    expect(wrapper.text()).not.toContain('250.0K')
+  })
+
+  it('Grok JWT free tier shows 24h bar even when leftover Heavy billing metrics remain', async () => {
+    getUsage.mockResolvedValue({
+      grok_free_token_limit: 500_000,
+      subscription_tier: 'free',
+      grok_billing: {
+        plan: 'SuperGrok Heavy',
+        monthly_limit_cents: 150_000,
+        usage_percent: 10,
+        used_percent: 5
+      },
+      grok_local_usage_24h: {
+        requests: 2,
+        tokens: 250_000,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4404, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('24h|')
+    expect(wrapper.text()).not.toContain('7d|')
+    expect(wrapper.text()).not.toContain('30d|')
+  })
+
+  it('Grok SuperGrok Lite stays on paid 7d bar, not free 24h', async () => {
+    getUsage.mockResolvedValue({
+      subscription_tier: 'supergrok_lite',
+      grok_billing: {
+        period_type: 'weekly',
+        plan: 'SuperGrok',
+        usage_percent: 20
+      },
+      grok_local_usage_24h: {
+        requests: 1,
+        tokens: 100,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4405, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+    expect(wrapper.text()).toContain('7d|')
+    expect(wrapper.text()).not.toContain('24h|')
+  })
+
+  it('Grok credential Free tier keeps the 1M fallback when billing is unavailable', async () => {
+    getUsage.mockResolvedValue({
+      grok_free_token_limit: 1_000_000,
+      subscription_tier: 'FREE',
+      grok_local_usage_24h: {
+        requests: 3,
+        tokens: 1_000_000,
+        cost: 0,
+        standard_cost: 0
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 4403, platform: 'grok', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+          },
+          AccountQuotaInfo: true,
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('24h|100')
   })
 
   it('Key 账号在 today stats loading 时显示骨架屏', async () => {
@@ -697,7 +1141,6 @@ describe('AccountUsageCell', () => {
             template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
           },
           AccountQuotaInfo: true,
-          GrokQuotaProbeCell: true
         }
       }
     })
@@ -741,7 +1184,6 @@ describe('AccountUsageCell', () => {
             template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
           },
           AccountQuotaInfo: true,
-          GrokQuotaProbeCell: true
         }
       }
     })

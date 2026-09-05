@@ -40,6 +40,15 @@ func (r *dashboardUsageRepoCacheProbe) GetUsageTrendWithFilters(
 	}}, nil
 }
 
+func (r *dashboardUsageRepoCacheProbe) GetUsageTrendWithUsageFilters(
+	ctx context.Context,
+	startTime, endTime time.Time,
+	granularity string,
+	filters usagestats.UsageLogFilters,
+) ([]usagestats.TrendDataPoint, error) {
+	return r.GetUsageTrendWithFilters(ctx, startTime, endTime, granularity, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+}
+
 func (r *dashboardUsageRepoCacheProbe) GetUserUsageTrend(
 	ctx context.Context,
 	startTime, endTime time.Time,
@@ -90,6 +99,25 @@ func TestDashboardHandler_GetUsageTrend_UsesCache(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
 	require.Equal(t, int32(1), repo.trendCalls.Load())
+}
+
+func TestDashboardHandler_GetUsageTrend_SeparatesReasoningEffortCache(t *testing.T) {
+	t.Cleanup(resetDashboardReadCachesForTest)
+	resetDashboardReadCachesForTest()
+
+	gin.SetMode(gin.TestMode)
+	repo := &dashboardUsageRepoCacheProbe{}
+	handler := NewDashboardHandler(service.NewDashboardService(repo, nil, nil, nil), nil)
+	router := gin.New()
+	router.GET("/admin/dashboard/trend", handler.GetUsageTrend)
+
+	for _, effort := range []string{"high", "low", "high"} {
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/trend?start_date=2026-03-01&end_date=2026-03-07&granularity=day&reasoning_effort="+effort, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+	}
+	require.Equal(t, int32(2), repo.trendCalls.Load())
 }
 
 func TestDashboardHandler_GetUserUsageTrend_UsesCache(t *testing.T) {

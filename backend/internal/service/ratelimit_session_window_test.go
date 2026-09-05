@@ -87,6 +87,9 @@ func (m *sessionWindowMockRepo) List(context.Context, pagination.PaginationParam
 func (m *sessionWindowMockRepo) ListWithFilters(context.Context, pagination.PaginationParams, string, string, string, string, int64, string) ([]Account, *pagination.PaginationResult, error) {
 	panic("unexpected")
 }
+func (m *sessionWindowMockRepo) ListAllWithFilters(context.Context, string, string, string, string, int64, string) ([]Account, error) {
+	panic("unexpected")
+}
 func (m *sessionWindowMockRepo) ListByGroup(context.Context, int64) ([]Account, error) {
 	panic("unexpected")
 }
@@ -138,6 +141,9 @@ func (m *sessionWindowMockRepo) ListSchedulableUngroupedByPlatform(context.Conte
 	panic("unexpected")
 }
 func (m *sessionWindowMockRepo) ListSchedulableUngroupedByPlatforms(context.Context, []string) ([]Account, error) {
+	panic("unexpected")
+}
+func (m *sessionWindowMockRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]Account, error) {
 	panic("unexpected")
 }
 func (m *sessionWindowMockRepo) SetRateLimited(context.Context, int64, time.Time) error {

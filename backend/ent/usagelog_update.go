@@ -142,6 +142,46 @@ func (_u *UsageLogUpdate) ClearUpstreamModel() *UsageLogUpdate {
 	return _u
 }
 
+// SetUpstreamResponseModel sets the "upstream_response_model" field.
+func (_u *UsageLogUpdate) SetUpstreamResponseModel(v string) *UsageLogUpdate {
+	_u.mutation.SetUpstreamResponseModel(v)
+	return _u
+}
+
+// SetNillableUpstreamResponseModel sets the "upstream_response_model" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUpstreamResponseModel(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUpstreamResponseModel(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamResponseModel clears the value of the "upstream_response_model" field.
+func (_u *UsageLogUpdate) ClearUpstreamResponseModel() *UsageLogUpdate {
+	_u.mutation.ClearUpstreamResponseModel()
+	return _u
+}
+
+// SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdate) SetUpstreamModelMismatch(v bool) *UsageLogUpdate {
+	_u.mutation.SetUpstreamModelMismatch(v)
+	return _u
+}
+
+// SetNillableUpstreamModelMismatch sets the "upstream_model_mismatch" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableUpstreamModelMismatch(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetUpstreamModelMismatch(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamModelMismatch clears the value of the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdate) ClearUpstreamModelMismatch() *UsageLogUpdate {
+	_u.mutation.ClearUpstreamModelMismatch()
+	return _u
+}
+
 // SetChannelID sets the "channel_id" field.
 func (_u *UsageLogUpdate) SetChannelID(v int64) *UsageLogUpdate {
 	_u.mutation.ResetChannelID()
@@ -542,6 +582,20 @@ func (_u *UsageLogUpdate) AddRateMultiplier(v float64) *UsageLogUpdate {
 	return _u
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (_u *UsageLogUpdate) SetLongContextBillingApplied(v bool) *UsageLogUpdate {
+	_u.mutation.SetLongContextBillingApplied(v)
+	return _u
+}
+
+// SetNillableLongContextBillingApplied sets the "long_context_billing_applied" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableLongContextBillingApplied(v *bool) *UsageLogUpdate {
+	if v != nil {
+		_u.SetLongContextBillingApplied(*v)
+	}
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdate) SetAccountRateMultiplier(v float64) *UsageLogUpdate {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -698,6 +752,246 @@ func (_u *UsageLogUpdate) ClearIPAddress() *UsageLogUpdate {
 	return _u
 }
 
+// SetSessionID sets the "session_id" field.
+func (_u *UsageLogUpdate) SetSessionID(v string) *UsageLogUpdate {
+	_u.mutation.SetSessionID(v)
+	return _u
+}
+
+// SetNillableSessionID sets the "session_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableSessionID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetSessionID(*v)
+	}
+	return _u
+}
+
+// ClearSessionID clears the value of the "session_id" field.
+func (_u *UsageLogUpdate) ClearSessionID() *UsageLogUpdate {
+	_u.mutation.ClearSessionID()
+	return _u
+}
+
+// SetClientMachineID sets the "client_machine_id" field.
+func (_u *UsageLogUpdate) SetClientMachineID(v string) *UsageLogUpdate {
+	_u.mutation.SetClientMachineID(v)
+	return _u
+}
+
+// SetNillableClientMachineID sets the "client_machine_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableClientMachineID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetClientMachineID(*v)
+	}
+	return _u
+}
+
+// ClearClientMachineID clears the value of the "client_machine_id" field.
+func (_u *UsageLogUpdate) ClearClientMachineID() *UsageLogUpdate {
+	_u.mutation.ClearClientMachineID()
+	return _u
+}
+
+// SetClientMachineSource sets the "client_machine_source" field.
+func (_u *UsageLogUpdate) SetClientMachineSource(v string) *UsageLogUpdate {
+	_u.mutation.SetClientMachineSource(v)
+	return _u
+}
+
+// SetNillableClientMachineSource sets the "client_machine_source" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableClientMachineSource(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetClientMachineSource(*v)
+	}
+	return _u
+}
+
+// ClearClientMachineSource clears the value of the "client_machine_source" field.
+func (_u *UsageLogUpdate) ClearClientMachineSource() *UsageLogUpdate {
+	_u.mutation.ClearClientMachineSource()
+	return _u
+}
+
+// SetClientDeviceID sets the "client_device_id" field.
+func (_u *UsageLogUpdate) SetClientDeviceID(v string) *UsageLogUpdate {
+	_u.mutation.SetClientDeviceID(v)
+	return _u
+}
+
+// SetNillableClientDeviceID sets the "client_device_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableClientDeviceID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetClientDeviceID(*v)
+	}
+	return _u
+}
+
+// ClearClientDeviceID clears the value of the "client_device_id" field.
+func (_u *UsageLogUpdate) ClearClientDeviceID() *UsageLogUpdate {
+	_u.mutation.ClearClientDeviceID()
+	return _u
+}
+
+// SetClientAccountUUID sets the "client_account_uuid" field.
+func (_u *UsageLogUpdate) SetClientAccountUUID(v string) *UsageLogUpdate {
+	_u.mutation.SetClientAccountUUID(v)
+	return _u
+}
+
+// SetNillableClientAccountUUID sets the "client_account_uuid" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableClientAccountUUID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetClientAccountUUID(*v)
+	}
+	return _u
+}
+
+// ClearClientAccountUUID clears the value of the "client_account_uuid" field.
+func (_u *UsageLogUpdate) ClearClientAccountUUID() *UsageLogUpdate {
+	_u.mutation.ClearClientAccountUUID()
+	return _u
+}
+
+// SetClientOriginator sets the "client_originator" field.
+func (_u *UsageLogUpdate) SetClientOriginator(v string) *UsageLogUpdate {
+	_u.mutation.SetClientOriginator(v)
+	return _u
+}
+
+// SetNillableClientOriginator sets the "client_originator" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableClientOriginator(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetClientOriginator(*v)
+	}
+	return _u
+}
+
+// ClearClientOriginator clears the value of the "client_originator" field.
+func (_u *UsageLogUpdate) ClearClientOriginator() *UsageLogUpdate {
+	_u.mutation.ClearClientOriginator()
+	return _u
+}
+
+// SetCodexInstallationID sets the "codex_installation_id" field.
+func (_u *UsageLogUpdate) SetCodexInstallationID(v string) *UsageLogUpdate {
+	_u.mutation.SetCodexInstallationID(v)
+	return _u
+}
+
+// SetNillableCodexInstallationID sets the "codex_installation_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCodexInstallationID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCodexInstallationID(*v)
+	}
+	return _u
+}
+
+// ClearCodexInstallationID clears the value of the "codex_installation_id" field.
+func (_u *UsageLogUpdate) ClearCodexInstallationID() *UsageLogUpdate {
+	_u.mutation.ClearCodexInstallationID()
+	return _u
+}
+
+// SetCodexWindowID sets the "codex_window_id" field.
+func (_u *UsageLogUpdate) SetCodexWindowID(v string) *UsageLogUpdate {
+	_u.mutation.SetCodexWindowID(v)
+	return _u
+}
+
+// SetNillableCodexWindowID sets the "codex_window_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCodexWindowID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCodexWindowID(*v)
+	}
+	return _u
+}
+
+// ClearCodexWindowID clears the value of the "codex_window_id" field.
+func (_u *UsageLogUpdate) ClearCodexWindowID() *UsageLogUpdate {
+	_u.mutation.ClearCodexWindowID()
+	return _u
+}
+
+// SetCodexSessionID sets the "codex_session_id" field.
+func (_u *UsageLogUpdate) SetCodexSessionID(v string) *UsageLogUpdate {
+	_u.mutation.SetCodexSessionID(v)
+	return _u
+}
+
+// SetNillableCodexSessionID sets the "codex_session_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCodexSessionID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCodexSessionID(*v)
+	}
+	return _u
+}
+
+// ClearCodexSessionID clears the value of the "codex_session_id" field.
+func (_u *UsageLogUpdate) ClearCodexSessionID() *UsageLogUpdate {
+	_u.mutation.ClearCodexSessionID()
+	return _u
+}
+
+// SetCodexThreadID sets the "codex_thread_id" field.
+func (_u *UsageLogUpdate) SetCodexThreadID(v string) *UsageLogUpdate {
+	_u.mutation.SetCodexThreadID(v)
+	return _u
+}
+
+// SetNillableCodexThreadID sets the "codex_thread_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCodexThreadID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCodexThreadID(*v)
+	}
+	return _u
+}
+
+// ClearCodexThreadID clears the value of the "codex_thread_id" field.
+func (_u *UsageLogUpdate) ClearCodexThreadID() *UsageLogUpdate {
+	_u.mutation.ClearCodexThreadID()
+	return _u
+}
+
+// SetCodexTurnID sets the "codex_turn_id" field.
+func (_u *UsageLogUpdate) SetCodexTurnID(v string) *UsageLogUpdate {
+	_u.mutation.SetCodexTurnID(v)
+	return _u
+}
+
+// SetNillableCodexTurnID sets the "codex_turn_id" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableCodexTurnID(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetCodexTurnID(*v)
+	}
+	return _u
+}
+
+// ClearCodexTurnID clears the value of the "codex_turn_id" field.
+func (_u *UsageLogUpdate) ClearCodexTurnID() *UsageLogUpdate {
+	_u.mutation.ClearCodexTurnID()
+	return _u
+}
+
+// SetTerminalHash sets the "terminal_hash" field.
+func (_u *UsageLogUpdate) SetTerminalHash(v string) *UsageLogUpdate {
+	_u.mutation.SetTerminalHash(v)
+	return _u
+}
+
+// SetNillableTerminalHash sets the "terminal_hash" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableTerminalHash(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetTerminalHash(*v)
+	}
+	return _u
+}
+
+// ClearTerminalHash clears the value of the "terminal_hash" field.
+func (_u *UsageLogUpdate) ClearTerminalHash() *UsageLogUpdate {
+	_u.mutation.ClearTerminalHash()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdate) SetImageCount(v int) *UsageLogUpdate {
 	_u.mutation.ResetImageCount()
@@ -808,6 +1102,74 @@ func (_u *UsageLogUpdate) SetImageSizeBreakdown(v map[string]int) *UsageLogUpdat
 // ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
 func (_u *UsageLogUpdate) ClearImageSizeBreakdown() *UsageLogUpdate {
 	_u.mutation.ClearImageSizeBreakdown()
+	return _u
+}
+
+// SetVideoCount sets the "video_count" field.
+func (_u *UsageLogUpdate) SetVideoCount(v int) *UsageLogUpdate {
+	_u.mutation.ResetVideoCount()
+	_u.mutation.SetVideoCount(v)
+	return _u
+}
+
+// SetNillableVideoCount sets the "video_count" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableVideoCount(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetVideoCount(*v)
+	}
+	return _u
+}
+
+// AddVideoCount adds value to the "video_count" field.
+func (_u *UsageLogUpdate) AddVideoCount(v int) *UsageLogUpdate {
+	_u.mutation.AddVideoCount(v)
+	return _u
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (_u *UsageLogUpdate) SetVideoResolution(v string) *UsageLogUpdate {
+	_u.mutation.SetVideoResolution(v)
+	return _u
+}
+
+// SetNillableVideoResolution sets the "video_resolution" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableVideoResolution(v *string) *UsageLogUpdate {
+	if v != nil {
+		_u.SetVideoResolution(*v)
+	}
+	return _u
+}
+
+// ClearVideoResolution clears the value of the "video_resolution" field.
+func (_u *UsageLogUpdate) ClearVideoResolution() *UsageLogUpdate {
+	_u.mutation.ClearVideoResolution()
+	return _u
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (_u *UsageLogUpdate) SetVideoDurationSeconds(v int) *UsageLogUpdate {
+	_u.mutation.ResetVideoDurationSeconds()
+	_u.mutation.SetVideoDurationSeconds(v)
+	return _u
+}
+
+// SetNillableVideoDurationSeconds sets the "video_duration_seconds" field if the given value is not nil.
+func (_u *UsageLogUpdate) SetNillableVideoDurationSeconds(v *int) *UsageLogUpdate {
+	if v != nil {
+		_u.SetVideoDurationSeconds(*v)
+	}
+	return _u
+}
+
+// AddVideoDurationSeconds adds value to the "video_duration_seconds" field.
+func (_u *UsageLogUpdate) AddVideoDurationSeconds(v int) *UsageLogUpdate {
+	_u.mutation.AddVideoDurationSeconds(v)
+	return _u
+}
+
+// ClearVideoDurationSeconds clears the value of the "video_duration_seconds" field.
+func (_u *UsageLogUpdate) ClearVideoDurationSeconds() *UsageLogUpdate {
+	_u.mutation.ClearVideoDurationSeconds()
 	return _u
 }
 
@@ -934,6 +1296,11 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UpstreamResponseModel(); ok {
+		if err := usagelog.UpstreamResponseModelValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_response_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_response_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
@@ -959,6 +1326,66 @@ func (_u *UsageLogUpdate) check() error {
 			return &ValidationError{Name: "ip_address", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ip_address": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SessionID(); ok {
+		if err := usagelog.SessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientMachineID(); ok {
+		if err := usagelog.ClientMachineIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_machine_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_machine_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientMachineSource(); ok {
+		if err := usagelog.ClientMachineSourceValidator(v); err != nil {
+			return &ValidationError{Name: "client_machine_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_machine_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientDeviceID(); ok {
+		if err := usagelog.ClientDeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_device_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_device_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientAccountUUID(); ok {
+		if err := usagelog.ClientAccountUUIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_account_uuid", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_account_uuid": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientOriginator(); ok {
+		if err := usagelog.ClientOriginatorValidator(v); err != nil {
+			return &ValidationError{Name: "client_originator", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_originator": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexInstallationID(); ok {
+		if err := usagelog.CodexInstallationIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_installation_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_installation_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexWindowID(); ok {
+		if err := usagelog.CodexWindowIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_window_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_window_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexSessionID(); ok {
+		if err := usagelog.CodexSessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_session_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexThreadID(); ok {
+		if err := usagelog.CodexThreadIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_thread_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_thread_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexTurnID(); ok {
+		if err := usagelog.CodexTurnIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_turn_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_turn_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TerminalHash(); ok {
+		if err := usagelog.TerminalHashValidator(v); err != nil {
+			return &ValidationError{Name: "terminal_hash", err: fmt.Errorf(`ent: validator failed for field "UsageLog.terminal_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
@@ -977,6 +1404,11 @@ func (_u *UsageLogUpdate) check() error {
 	if v, ok := _u.mutation.ImageSizeSource(); ok {
 		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.VideoResolution(); ok {
+		if err := usagelog.VideoResolutionValidator(v); err != nil {
+			return &ValidationError{Name: "video_resolution", err: fmt.Errorf(`ent: validator failed for field "UsageLog.video_resolution": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -1020,6 +1452,18 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.UpstreamResponseModel(); ok {
+		_spec.SetField(usagelog.FieldUpstreamResponseModel, field.TypeString, value)
+	}
+	if _u.mutation.UpstreamResponseModelCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamResponseModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.UpstreamModelMismatch(); ok {
+		_spec.SetField(usagelog.FieldUpstreamModelMismatch, field.TypeBool, value)
+	}
+	if _u.mutation.UpstreamModelMismatchCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamModelMismatch, field.TypeBool)
 	}
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
@@ -1126,6 +1570,9 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.LongContextBillingApplied(); ok {
+		_spec.SetField(usagelog.FieldLongContextBillingApplied, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 	}
@@ -1174,6 +1621,78 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
 	}
+	if value, ok := _u.mutation.SessionID(); ok {
+		_spec.SetField(usagelog.FieldSessionID, field.TypeString, value)
+	}
+	if _u.mutation.SessionIDCleared() {
+		_spec.ClearField(usagelog.FieldSessionID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientMachineID(); ok {
+		_spec.SetField(usagelog.FieldClientMachineID, field.TypeString, value)
+	}
+	if _u.mutation.ClientMachineIDCleared() {
+		_spec.ClearField(usagelog.FieldClientMachineID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientMachineSource(); ok {
+		_spec.SetField(usagelog.FieldClientMachineSource, field.TypeString, value)
+	}
+	if _u.mutation.ClientMachineSourceCleared() {
+		_spec.ClearField(usagelog.FieldClientMachineSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientDeviceID(); ok {
+		_spec.SetField(usagelog.FieldClientDeviceID, field.TypeString, value)
+	}
+	if _u.mutation.ClientDeviceIDCleared() {
+		_spec.ClearField(usagelog.FieldClientDeviceID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientAccountUUID(); ok {
+		_spec.SetField(usagelog.FieldClientAccountUUID, field.TypeString, value)
+	}
+	if _u.mutation.ClientAccountUUIDCleared() {
+		_spec.ClearField(usagelog.FieldClientAccountUUID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientOriginator(); ok {
+		_spec.SetField(usagelog.FieldClientOriginator, field.TypeString, value)
+	}
+	if _u.mutation.ClientOriginatorCleared() {
+		_spec.ClearField(usagelog.FieldClientOriginator, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexInstallationID(); ok {
+		_spec.SetField(usagelog.FieldCodexInstallationID, field.TypeString, value)
+	}
+	if _u.mutation.CodexInstallationIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexInstallationID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexWindowID(); ok {
+		_spec.SetField(usagelog.FieldCodexWindowID, field.TypeString, value)
+	}
+	if _u.mutation.CodexWindowIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexWindowID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexSessionID(); ok {
+		_spec.SetField(usagelog.FieldCodexSessionID, field.TypeString, value)
+	}
+	if _u.mutation.CodexSessionIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexSessionID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexThreadID(); ok {
+		_spec.SetField(usagelog.FieldCodexThreadID, field.TypeString, value)
+	}
+	if _u.mutation.CodexThreadIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexThreadID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexTurnID(); ok {
+		_spec.SetField(usagelog.FieldCodexTurnID, field.TypeString, value)
+	}
+	if _u.mutation.CodexTurnIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexTurnID, field.TypeString)
+	}
+	if value, ok := _u.mutation.TerminalHash(); ok {
+		_spec.SetField(usagelog.FieldTerminalHash, field.TypeString, value)
+	}
+	if _u.mutation.TerminalHashCleared() {
+		_spec.ClearField(usagelog.FieldTerminalHash, field.TypeString)
+	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
 	}
@@ -1209,6 +1728,27 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.ImageSizeBreakdownCleared() {
 		_spec.ClearField(usagelog.FieldImageSizeBreakdown, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.VideoCount(); ok {
+		_spec.SetField(usagelog.FieldVideoCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedVideoCount(); ok {
+		_spec.AddField(usagelog.FieldVideoCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.VideoResolution(); ok {
+		_spec.SetField(usagelog.FieldVideoResolution, field.TypeString, value)
+	}
+	if _u.mutation.VideoResolutionCleared() {
+		_spec.ClearField(usagelog.FieldVideoResolution, field.TypeString)
+	}
+	if value, ok := _u.mutation.VideoDurationSeconds(); ok {
+		_spec.SetField(usagelog.FieldVideoDurationSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedVideoDurationSeconds(); ok {
+		_spec.AddField(usagelog.FieldVideoDurationSeconds, field.TypeInt, value)
+	}
+	if _u.mutation.VideoDurationSecondsCleared() {
+		_spec.ClearField(usagelog.FieldVideoDurationSeconds, field.TypeInt)
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
@@ -1485,6 +2025,46 @@ func (_u *UsageLogUpdateOne) SetNillableUpstreamModel(v *string) *UsageLogUpdate
 // ClearUpstreamModel clears the value of the "upstream_model" field.
 func (_u *UsageLogUpdateOne) ClearUpstreamModel() *UsageLogUpdateOne {
 	_u.mutation.ClearUpstreamModel()
+	return _u
+}
+
+// SetUpstreamResponseModel sets the "upstream_response_model" field.
+func (_u *UsageLogUpdateOne) SetUpstreamResponseModel(v string) *UsageLogUpdateOne {
+	_u.mutation.SetUpstreamResponseModel(v)
+	return _u
+}
+
+// SetNillableUpstreamResponseModel sets the "upstream_response_model" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUpstreamResponseModel(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUpstreamResponseModel(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamResponseModel clears the value of the "upstream_response_model" field.
+func (_u *UsageLogUpdateOne) ClearUpstreamResponseModel() *UsageLogUpdateOne {
+	_u.mutation.ClearUpstreamResponseModel()
+	return _u
+}
+
+// SetUpstreamModelMismatch sets the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdateOne) SetUpstreamModelMismatch(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetUpstreamModelMismatch(v)
+	return _u
+}
+
+// SetNillableUpstreamModelMismatch sets the "upstream_model_mismatch" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableUpstreamModelMismatch(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetUpstreamModelMismatch(*v)
+	}
+	return _u
+}
+
+// ClearUpstreamModelMismatch clears the value of the "upstream_model_mismatch" field.
+func (_u *UsageLogUpdateOne) ClearUpstreamModelMismatch() *UsageLogUpdateOne {
+	_u.mutation.ClearUpstreamModelMismatch()
 	return _u
 }
 
@@ -1888,6 +2468,20 @@ func (_u *UsageLogUpdateOne) AddRateMultiplier(v float64) *UsageLogUpdateOne {
 	return _u
 }
 
+// SetLongContextBillingApplied sets the "long_context_billing_applied" field.
+func (_u *UsageLogUpdateOne) SetLongContextBillingApplied(v bool) *UsageLogUpdateOne {
+	_u.mutation.SetLongContextBillingApplied(v)
+	return _u
+}
+
+// SetNillableLongContextBillingApplied sets the "long_context_billing_applied" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableLongContextBillingApplied(v *bool) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetLongContextBillingApplied(*v)
+	}
+	return _u
+}
+
 // SetAccountRateMultiplier sets the "account_rate_multiplier" field.
 func (_u *UsageLogUpdateOne) SetAccountRateMultiplier(v float64) *UsageLogUpdateOne {
 	_u.mutation.ResetAccountRateMultiplier()
@@ -2044,6 +2638,246 @@ func (_u *UsageLogUpdateOne) ClearIPAddress() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetSessionID sets the "session_id" field.
+func (_u *UsageLogUpdateOne) SetSessionID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetSessionID(v)
+	return _u
+}
+
+// SetNillableSessionID sets the "session_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableSessionID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetSessionID(*v)
+	}
+	return _u
+}
+
+// ClearSessionID clears the value of the "session_id" field.
+func (_u *UsageLogUpdateOne) ClearSessionID() *UsageLogUpdateOne {
+	_u.mutation.ClearSessionID()
+	return _u
+}
+
+// SetClientMachineID sets the "client_machine_id" field.
+func (_u *UsageLogUpdateOne) SetClientMachineID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetClientMachineID(v)
+	return _u
+}
+
+// SetNillableClientMachineID sets the "client_machine_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableClientMachineID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetClientMachineID(*v)
+	}
+	return _u
+}
+
+// ClearClientMachineID clears the value of the "client_machine_id" field.
+func (_u *UsageLogUpdateOne) ClearClientMachineID() *UsageLogUpdateOne {
+	_u.mutation.ClearClientMachineID()
+	return _u
+}
+
+// SetClientMachineSource sets the "client_machine_source" field.
+func (_u *UsageLogUpdateOne) SetClientMachineSource(v string) *UsageLogUpdateOne {
+	_u.mutation.SetClientMachineSource(v)
+	return _u
+}
+
+// SetNillableClientMachineSource sets the "client_machine_source" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableClientMachineSource(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetClientMachineSource(*v)
+	}
+	return _u
+}
+
+// ClearClientMachineSource clears the value of the "client_machine_source" field.
+func (_u *UsageLogUpdateOne) ClearClientMachineSource() *UsageLogUpdateOne {
+	_u.mutation.ClearClientMachineSource()
+	return _u
+}
+
+// SetClientDeviceID sets the "client_device_id" field.
+func (_u *UsageLogUpdateOne) SetClientDeviceID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetClientDeviceID(v)
+	return _u
+}
+
+// SetNillableClientDeviceID sets the "client_device_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableClientDeviceID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetClientDeviceID(*v)
+	}
+	return _u
+}
+
+// ClearClientDeviceID clears the value of the "client_device_id" field.
+func (_u *UsageLogUpdateOne) ClearClientDeviceID() *UsageLogUpdateOne {
+	_u.mutation.ClearClientDeviceID()
+	return _u
+}
+
+// SetClientAccountUUID sets the "client_account_uuid" field.
+func (_u *UsageLogUpdateOne) SetClientAccountUUID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetClientAccountUUID(v)
+	return _u
+}
+
+// SetNillableClientAccountUUID sets the "client_account_uuid" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableClientAccountUUID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetClientAccountUUID(*v)
+	}
+	return _u
+}
+
+// ClearClientAccountUUID clears the value of the "client_account_uuid" field.
+func (_u *UsageLogUpdateOne) ClearClientAccountUUID() *UsageLogUpdateOne {
+	_u.mutation.ClearClientAccountUUID()
+	return _u
+}
+
+// SetClientOriginator sets the "client_originator" field.
+func (_u *UsageLogUpdateOne) SetClientOriginator(v string) *UsageLogUpdateOne {
+	_u.mutation.SetClientOriginator(v)
+	return _u
+}
+
+// SetNillableClientOriginator sets the "client_originator" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableClientOriginator(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetClientOriginator(*v)
+	}
+	return _u
+}
+
+// ClearClientOriginator clears the value of the "client_originator" field.
+func (_u *UsageLogUpdateOne) ClearClientOriginator() *UsageLogUpdateOne {
+	_u.mutation.ClearClientOriginator()
+	return _u
+}
+
+// SetCodexInstallationID sets the "codex_installation_id" field.
+func (_u *UsageLogUpdateOne) SetCodexInstallationID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCodexInstallationID(v)
+	return _u
+}
+
+// SetNillableCodexInstallationID sets the "codex_installation_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCodexInstallationID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCodexInstallationID(*v)
+	}
+	return _u
+}
+
+// ClearCodexInstallationID clears the value of the "codex_installation_id" field.
+func (_u *UsageLogUpdateOne) ClearCodexInstallationID() *UsageLogUpdateOne {
+	_u.mutation.ClearCodexInstallationID()
+	return _u
+}
+
+// SetCodexWindowID sets the "codex_window_id" field.
+func (_u *UsageLogUpdateOne) SetCodexWindowID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCodexWindowID(v)
+	return _u
+}
+
+// SetNillableCodexWindowID sets the "codex_window_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCodexWindowID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCodexWindowID(*v)
+	}
+	return _u
+}
+
+// ClearCodexWindowID clears the value of the "codex_window_id" field.
+func (_u *UsageLogUpdateOne) ClearCodexWindowID() *UsageLogUpdateOne {
+	_u.mutation.ClearCodexWindowID()
+	return _u
+}
+
+// SetCodexSessionID sets the "codex_session_id" field.
+func (_u *UsageLogUpdateOne) SetCodexSessionID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCodexSessionID(v)
+	return _u
+}
+
+// SetNillableCodexSessionID sets the "codex_session_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCodexSessionID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCodexSessionID(*v)
+	}
+	return _u
+}
+
+// ClearCodexSessionID clears the value of the "codex_session_id" field.
+func (_u *UsageLogUpdateOne) ClearCodexSessionID() *UsageLogUpdateOne {
+	_u.mutation.ClearCodexSessionID()
+	return _u
+}
+
+// SetCodexThreadID sets the "codex_thread_id" field.
+func (_u *UsageLogUpdateOne) SetCodexThreadID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCodexThreadID(v)
+	return _u
+}
+
+// SetNillableCodexThreadID sets the "codex_thread_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCodexThreadID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCodexThreadID(*v)
+	}
+	return _u
+}
+
+// ClearCodexThreadID clears the value of the "codex_thread_id" field.
+func (_u *UsageLogUpdateOne) ClearCodexThreadID() *UsageLogUpdateOne {
+	_u.mutation.ClearCodexThreadID()
+	return _u
+}
+
+// SetCodexTurnID sets the "codex_turn_id" field.
+func (_u *UsageLogUpdateOne) SetCodexTurnID(v string) *UsageLogUpdateOne {
+	_u.mutation.SetCodexTurnID(v)
+	return _u
+}
+
+// SetNillableCodexTurnID sets the "codex_turn_id" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableCodexTurnID(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetCodexTurnID(*v)
+	}
+	return _u
+}
+
+// ClearCodexTurnID clears the value of the "codex_turn_id" field.
+func (_u *UsageLogUpdateOne) ClearCodexTurnID() *UsageLogUpdateOne {
+	_u.mutation.ClearCodexTurnID()
+	return _u
+}
+
+// SetTerminalHash sets the "terminal_hash" field.
+func (_u *UsageLogUpdateOne) SetTerminalHash(v string) *UsageLogUpdateOne {
+	_u.mutation.SetTerminalHash(v)
+	return _u
+}
+
+// SetNillableTerminalHash sets the "terminal_hash" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableTerminalHash(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetTerminalHash(*v)
+	}
+	return _u
+}
+
+// ClearTerminalHash clears the value of the "terminal_hash" field.
+func (_u *UsageLogUpdateOne) ClearTerminalHash() *UsageLogUpdateOne {
+	_u.mutation.ClearTerminalHash()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdateOne) SetImageCount(v int) *UsageLogUpdateOne {
 	_u.mutation.ResetImageCount()
@@ -2154,6 +2988,74 @@ func (_u *UsageLogUpdateOne) SetImageSizeBreakdown(v map[string]int) *UsageLogUp
 // ClearImageSizeBreakdown clears the value of the "image_size_breakdown" field.
 func (_u *UsageLogUpdateOne) ClearImageSizeBreakdown() *UsageLogUpdateOne {
 	_u.mutation.ClearImageSizeBreakdown()
+	return _u
+}
+
+// SetVideoCount sets the "video_count" field.
+func (_u *UsageLogUpdateOne) SetVideoCount(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetVideoCount()
+	_u.mutation.SetVideoCount(v)
+	return _u
+}
+
+// SetNillableVideoCount sets the "video_count" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableVideoCount(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetVideoCount(*v)
+	}
+	return _u
+}
+
+// AddVideoCount adds value to the "video_count" field.
+func (_u *UsageLogUpdateOne) AddVideoCount(v int) *UsageLogUpdateOne {
+	_u.mutation.AddVideoCount(v)
+	return _u
+}
+
+// SetVideoResolution sets the "video_resolution" field.
+func (_u *UsageLogUpdateOne) SetVideoResolution(v string) *UsageLogUpdateOne {
+	_u.mutation.SetVideoResolution(v)
+	return _u
+}
+
+// SetNillableVideoResolution sets the "video_resolution" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableVideoResolution(v *string) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetVideoResolution(*v)
+	}
+	return _u
+}
+
+// ClearVideoResolution clears the value of the "video_resolution" field.
+func (_u *UsageLogUpdateOne) ClearVideoResolution() *UsageLogUpdateOne {
+	_u.mutation.ClearVideoResolution()
+	return _u
+}
+
+// SetVideoDurationSeconds sets the "video_duration_seconds" field.
+func (_u *UsageLogUpdateOne) SetVideoDurationSeconds(v int) *UsageLogUpdateOne {
+	_u.mutation.ResetVideoDurationSeconds()
+	_u.mutation.SetVideoDurationSeconds(v)
+	return _u
+}
+
+// SetNillableVideoDurationSeconds sets the "video_duration_seconds" field if the given value is not nil.
+func (_u *UsageLogUpdateOne) SetNillableVideoDurationSeconds(v *int) *UsageLogUpdateOne {
+	if v != nil {
+		_u.SetVideoDurationSeconds(*v)
+	}
+	return _u
+}
+
+// AddVideoDurationSeconds adds value to the "video_duration_seconds" field.
+func (_u *UsageLogUpdateOne) AddVideoDurationSeconds(v int) *UsageLogUpdateOne {
+	_u.mutation.AddVideoDurationSeconds(v)
+	return _u
+}
+
+// ClearVideoDurationSeconds clears the value of the "video_duration_seconds" field.
+func (_u *UsageLogUpdateOne) ClearVideoDurationSeconds() *UsageLogUpdateOne {
+	_u.mutation.ClearVideoDurationSeconds()
 	return _u
 }
 
@@ -2293,6 +3195,11 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_model": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.UpstreamResponseModel(); ok {
+		if err := usagelog.UpstreamResponseModelValidator(v); err != nil {
+			return &ValidationError{Name: "upstream_response_model", err: fmt.Errorf(`ent: validator failed for field "UsageLog.upstream_response_model": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ModelMappingChain(); ok {
 		if err := usagelog.ModelMappingChainValidator(v); err != nil {
 			return &ValidationError{Name: "model_mapping_chain", err: fmt.Errorf(`ent: validator failed for field "UsageLog.model_mapping_chain": %w`, err)}
@@ -2318,6 +3225,66 @@ func (_u *UsageLogUpdateOne) check() error {
 			return &ValidationError{Name: "ip_address", err: fmt.Errorf(`ent: validator failed for field "UsageLog.ip_address": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.SessionID(); ok {
+		if err := usagelog.SessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "session_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientMachineID(); ok {
+		if err := usagelog.ClientMachineIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_machine_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_machine_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientMachineSource(); ok {
+		if err := usagelog.ClientMachineSourceValidator(v); err != nil {
+			return &ValidationError{Name: "client_machine_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_machine_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientDeviceID(); ok {
+		if err := usagelog.ClientDeviceIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_device_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_device_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientAccountUUID(); ok {
+		if err := usagelog.ClientAccountUUIDValidator(v); err != nil {
+			return &ValidationError{Name: "client_account_uuid", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_account_uuid": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ClientOriginator(); ok {
+		if err := usagelog.ClientOriginatorValidator(v); err != nil {
+			return &ValidationError{Name: "client_originator", err: fmt.Errorf(`ent: validator failed for field "UsageLog.client_originator": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexInstallationID(); ok {
+		if err := usagelog.CodexInstallationIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_installation_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_installation_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexWindowID(); ok {
+		if err := usagelog.CodexWindowIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_window_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_window_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexSessionID(); ok {
+		if err := usagelog.CodexSessionIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_session_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_session_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexThreadID(); ok {
+		if err := usagelog.CodexThreadIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_thread_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_thread_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.CodexTurnID(); ok {
+		if err := usagelog.CodexTurnIDValidator(v); err != nil {
+			return &ValidationError{Name: "codex_turn_id", err: fmt.Errorf(`ent: validator failed for field "UsageLog.codex_turn_id": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.TerminalHash(); ok {
+		if err := usagelog.TerminalHashValidator(v); err != nil {
+			return &ValidationError{Name: "terminal_hash", err: fmt.Errorf(`ent: validator failed for field "UsageLog.terminal_hash": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.ImageSize(); ok {
 		if err := usagelog.ImageSizeValidator(v); err != nil {
 			return &ValidationError{Name: "image_size", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size": %w`, err)}
@@ -2336,6 +3303,11 @@ func (_u *UsageLogUpdateOne) check() error {
 	if v, ok := _u.mutation.ImageSizeSource(); ok {
 		if err := usagelog.ImageSizeSourceValidator(v); err != nil {
 			return &ValidationError{Name: "image_size_source", err: fmt.Errorf(`ent: validator failed for field "UsageLog.image_size_source": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.VideoResolution(); ok {
+		if err := usagelog.VideoResolutionValidator(v); err != nil {
+			return &ValidationError{Name: "video_resolution", err: fmt.Errorf(`ent: validator failed for field "UsageLog.video_resolution": %w`, err)}
 		}
 	}
 	if _u.mutation.UserCleared() && len(_u.mutation.UserIDs()) > 0 {
@@ -2396,6 +3368,18 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.UpstreamModelCleared() {
 		_spec.ClearField(usagelog.FieldUpstreamModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.UpstreamResponseModel(); ok {
+		_spec.SetField(usagelog.FieldUpstreamResponseModel, field.TypeString, value)
+	}
+	if _u.mutation.UpstreamResponseModelCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamResponseModel, field.TypeString)
+	}
+	if value, ok := _u.mutation.UpstreamModelMismatch(); ok {
+		_spec.SetField(usagelog.FieldUpstreamModelMismatch, field.TypeBool, value)
+	}
+	if _u.mutation.UpstreamModelMismatchCleared() {
+		_spec.ClearField(usagelog.FieldUpstreamModelMismatch, field.TypeBool)
 	}
 	if value, ok := _u.mutation.ChannelID(); ok {
 		_spec.SetField(usagelog.FieldChannelID, field.TypeInt64, value)
@@ -2502,6 +3486,9 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	if value, ok := _u.mutation.AddedRateMultiplier(); ok {
 		_spec.AddField(usagelog.FieldRateMultiplier, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.LongContextBillingApplied(); ok {
+		_spec.SetField(usagelog.FieldLongContextBillingApplied, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.AccountRateMultiplier(); ok {
 		_spec.SetField(usagelog.FieldAccountRateMultiplier, field.TypeFloat64, value)
 	}
@@ -2550,6 +3537,78 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
 	}
+	if value, ok := _u.mutation.SessionID(); ok {
+		_spec.SetField(usagelog.FieldSessionID, field.TypeString, value)
+	}
+	if _u.mutation.SessionIDCleared() {
+		_spec.ClearField(usagelog.FieldSessionID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientMachineID(); ok {
+		_spec.SetField(usagelog.FieldClientMachineID, field.TypeString, value)
+	}
+	if _u.mutation.ClientMachineIDCleared() {
+		_spec.ClearField(usagelog.FieldClientMachineID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientMachineSource(); ok {
+		_spec.SetField(usagelog.FieldClientMachineSource, field.TypeString, value)
+	}
+	if _u.mutation.ClientMachineSourceCleared() {
+		_spec.ClearField(usagelog.FieldClientMachineSource, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientDeviceID(); ok {
+		_spec.SetField(usagelog.FieldClientDeviceID, field.TypeString, value)
+	}
+	if _u.mutation.ClientDeviceIDCleared() {
+		_spec.ClearField(usagelog.FieldClientDeviceID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientAccountUUID(); ok {
+		_spec.SetField(usagelog.FieldClientAccountUUID, field.TypeString, value)
+	}
+	if _u.mutation.ClientAccountUUIDCleared() {
+		_spec.ClearField(usagelog.FieldClientAccountUUID, field.TypeString)
+	}
+	if value, ok := _u.mutation.ClientOriginator(); ok {
+		_spec.SetField(usagelog.FieldClientOriginator, field.TypeString, value)
+	}
+	if _u.mutation.ClientOriginatorCleared() {
+		_spec.ClearField(usagelog.FieldClientOriginator, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexInstallationID(); ok {
+		_spec.SetField(usagelog.FieldCodexInstallationID, field.TypeString, value)
+	}
+	if _u.mutation.CodexInstallationIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexInstallationID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexWindowID(); ok {
+		_spec.SetField(usagelog.FieldCodexWindowID, field.TypeString, value)
+	}
+	if _u.mutation.CodexWindowIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexWindowID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexSessionID(); ok {
+		_spec.SetField(usagelog.FieldCodexSessionID, field.TypeString, value)
+	}
+	if _u.mutation.CodexSessionIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexSessionID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexThreadID(); ok {
+		_spec.SetField(usagelog.FieldCodexThreadID, field.TypeString, value)
+	}
+	if _u.mutation.CodexThreadIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexThreadID, field.TypeString)
+	}
+	if value, ok := _u.mutation.CodexTurnID(); ok {
+		_spec.SetField(usagelog.FieldCodexTurnID, field.TypeString, value)
+	}
+	if _u.mutation.CodexTurnIDCleared() {
+		_spec.ClearField(usagelog.FieldCodexTurnID, field.TypeString)
+	}
+	if value, ok := _u.mutation.TerminalHash(); ok {
+		_spec.SetField(usagelog.FieldTerminalHash, field.TypeString, value)
+	}
+	if _u.mutation.TerminalHashCleared() {
+		_spec.ClearField(usagelog.FieldTerminalHash, field.TypeString)
+	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
 	}
@@ -2585,6 +3644,27 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.ImageSizeBreakdownCleared() {
 		_spec.ClearField(usagelog.FieldImageSizeBreakdown, field.TypeJSON)
+	}
+	if value, ok := _u.mutation.VideoCount(); ok {
+		_spec.SetField(usagelog.FieldVideoCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedVideoCount(); ok {
+		_spec.AddField(usagelog.FieldVideoCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.VideoResolution(); ok {
+		_spec.SetField(usagelog.FieldVideoResolution, field.TypeString, value)
+	}
+	if _u.mutation.VideoResolutionCleared() {
+		_spec.ClearField(usagelog.FieldVideoResolution, field.TypeString)
+	}
+	if value, ok := _u.mutation.VideoDurationSeconds(); ok {
+		_spec.SetField(usagelog.FieldVideoDurationSeconds, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedVideoDurationSeconds(); ok {
+		_spec.AddField(usagelog.FieldVideoDurationSeconds, field.TypeInt, value)
+	}
+	if _u.mutation.VideoDurationSecondsCleared() {
+		_spec.ClearField(usagelog.FieldVideoDurationSeconds, field.TypeInt)
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)

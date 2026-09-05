@@ -8,6 +8,7 @@ import (
 type OpsSystemLog struct {
 	ID              int64          `json:"id"`
 	CreatedAt       time.Time      `json:"created_at"`
+	Host            string         `json:"host"`
 	Level           string         `json:"level"`
 	Component       string         `json:"component"`
 	Message         string         `json:"message"`
@@ -26,7 +27,7 @@ type OpsErrorLog struct {
 	CreatedAt time.Time `json:"created_at"`
 
 	// Standardized classification
-	// - phase: request|auth|routing|upstream|network|internal
+	// - phase: request|auth|account_auth|routing|upstream|network|internal
 	// - owner: client|provider|platform
 	// - source: client_request|upstream_http|gateway
 	Phase string `json:"phase"`
@@ -73,11 +74,6 @@ type OpsErrorLog struct {
 	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
 	APIKeyName    string `json:"api_key_name,omitempty"`
 	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`
-
-	// 已删除 KEY 所有者（INVALID_API_KEY 且该 key 曾存在时的归因快照）。
-	// 认证失败行 user_id 为空，列表用户列以此回退显示所有者。
-	DeletedKeyOwnerUserID *int64 `json:"deleted_key_owner_user_id,omitempty"`
-	DeletedKeyOwnerEmail  string `json:"deleted_key_owner_email,omitempty"`
 }
 
 type OpsErrorLogDetail struct {
@@ -101,12 +97,7 @@ type OpsErrorLogDetail struct {
 	// vNext metric semantics
 	IsBusinessLimited bool `json:"is_business_limited"`
 
-	// Deleted key owner info (populated when INVALID_API_KEY and key was previously deleted).
-	// OwnerUserID/OwnerEmail 已上移到 OpsErrorLog（列表用户列回退需要）。
-	AttemptedKeyPrefix string `json:"attempted_key_prefix,omitempty"`
-	DeletedKeyName     string `json:"deleted_key_name,omitempty"`
-
-	// Bound (non-deleted) key prefix, snapshotted at error time; mutually exclusive with AttemptedKeyPrefix.
+	// Bound (non-deleted) key prefix, snapshotted at error time.
 	APIKeyPrefix string `json:"api_key_prefix,omitempty"`
 }
 
@@ -120,7 +111,7 @@ type OpsErrorLogFilter struct {
 
 	StatusCodes      []int
 	StatusCodesOther bool
-	Phase            string // Special: Phase=="upstream" bypasses status>=400 clause; do not set together with ErrorPhasesAny.
+	Phase            string // Recovered provider rows bypass status>=400 only with the explicit opt-in below.
 	Owner            string
 	Source           string
 	Resolved         *bool
@@ -136,11 +127,6 @@ type OpsErrorLogFilter struct {
 	UserID   *int64
 	APIKeyID *int64
 
-	// MatchDeletedKeyOwner: 用户侧专用。UserID 设置且为 true 时,归属从 user_id=UserID
-	// 放宽为 (user_id=UserID OR deleted_key_owner_user_id=UserID),使原所有者能看到
-	// 自己「已删除 key 认证失败」的记录。admin 路径不设此开关 → 行为不变。
-	MatchDeletedKeyOwner bool
-
 	// Model matches against requested_model first, then model.
 	Model string
 	// ModelFuzzy 为 true 时 Model 走 ILIKE 模糊匹配（仅用户端启用）；false（默认）保持精确 =，管理端语义不变。
@@ -149,14 +135,17 @@ type OpsErrorLogFilter struct {
 	// ExcludeCountTokens drops count_tokens probe errors (is_count_tokens=true).
 	ExcludeCountTokens bool
 
-	// IncludeRecoveredUpstream explicitly bypasses the status>=400 guard.
-	// Ops monitoring views use it to include recovered upstream rows; request-error
-	// endpoints leave it false and retain client-visible error semantics.
+	// IncludeRecoveredUpstream explicitly exempts the status>=400 guard for the
+	// general (phase-unconstrained) ops monitoring view and for provider-health
+	// phases (upstream and account_auth). Request-error endpoints do not set
+	// this flag and retain client-error semantics.
 	IncludeRecoveredUpstream bool
 
 	// ErrorPhasesAny / ErrorTypesAny add plain ANY() filters WITHOUT touching the
-	// special-cased single `Phase` field. These ANY filters do not implicitly
-	// bypass status>=400; only IncludeRecoveredUpstream does that.
+	// special-cased single `Phase` field. With IncludeRecoveredUpstream, an ANY
+	// list containing only upstream/account_auth also bypasses status>=400; any
+	// other phase in the list keeps the guard, so records with
+	// error_phase='request' and status_code<400 remain excluded.
 	// Used to map user-facing coarse categories to backend conditions.
 	ErrorPhasesAny []string
 	ErrorTypesAny  []string

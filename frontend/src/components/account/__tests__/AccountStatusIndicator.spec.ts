@@ -13,6 +13,14 @@ vi.mock('vue-i18n', async () => {
   }
 })
 
+vi.mock('@/utils/format', async () => {
+  const actual = await vi.importActual<typeof import('@/utils/format')>('@/utils/format')
+  return {
+    ...actual,
+    formatCountdown: () => '1h'
+  }
+})
+
 function makeAccount(overrides: Partial<Account>): Account {
   return {
     id: 1,
@@ -43,6 +51,61 @@ function makeAccount(overrides: Partial<Account>): Account {
 }
 
 describe('AccountStatusIndicator', () => {
+  it('Claude 5 模型限流时显示 Opus 和 Sonnet 的短别名', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          extra: {
+            model_rate_limits: {
+              'claude-opus-5': {
+                rate_limited_at: '2026-07-28T00:00:00Z',
+                rate_limit_reset_at: '2099-07-28T00:00:00Z'
+              },
+              'claude-sonnet-5': {
+                rate_limited_at: '2026-07-28T00:00:00Z',
+                rate_limit_reset_at: '2099-07-28T00:00:00Z'
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('COpus5')
+    expect(wrapper.text()).toContain('CSon5')
+    expect(wrapper.text()).not.toContain('claude-sonnet-5')
+  })
+
+  it('Grok 账号额度限流时显示自动恢复时间而非临时不可调度', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 5,
+          name: 'grok-free-1',
+          platform: 'grok',
+          rate_limited_at: '2026-07-11T12:00:00Z',
+          rate_limit_reset_at: '2099-07-11T13:00:00Z',
+          temp_unschedulable_until: '2099-07-11T12:30:00Z',
+          temp_unschedulable_reason: 'legacy grok rate limited'
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.find('.badge-warning').text()).toBe('admin.accounts.status.rateLimited')
+    expect(wrapper.text()).toContain('admin.accounts.status.rateLimitedAutoResume')
+    expect(wrapper.text()).not.toContain('admin.accounts.status.tempUnschedulable')
+  })
+
   it('模型限流 + overages 启用 + 无 AICredits key → 显示 ⚡ (credits_active)', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {
@@ -96,6 +159,68 @@ describe('AccountStatusIndicator', () => {
 
     expect(wrapper.text()).toContain('CSon45')
     expect(wrapper.text()).not.toContain('⚡')
+  })
+
+  it('OpenAI capacity breaker 模型限流显示 reason', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 6,
+          platform: 'openai',
+          extra: {
+            model_rate_limits: {
+              'gpt-5.6-sol': {
+                rate_limited_at: '2026-08-16T00:00:00Z',
+                rate_limit_reset_at: '2099-08-16T00:30:00Z',
+                reason: '{"type":"openai_capacity_breaker","level":1}'
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('gpt-5.6-sol')
+    expect(wrapper.text()).toContain('openai_capacity_breaker')
+  })
+
+  it('OpenAI capacity breaker 永久禁用显示管理员提示', () => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          id: 7,
+          platform: 'openai',
+          schedulable: false,
+          extra: {
+            openai_capacity_breaker: {
+              models: {
+                'gpt-5.6-sol': {
+                  level: 4,
+                  permanent: true,
+                  reason: 'server_is_overloaded',
+                  message: 'Our servers are currently overloaded. Please try again later.',
+                  updated_at: '2026-08-16T00:00:00Z'
+                }
+              }
+            }
+          }
+        })
+      },
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('CAP')
+    expect(wrapper.text()).toContain('OpenAI capacity breaker')
+    expect(wrapper.text()).toContain('server_is_overloaded')
   })
 
   it('AICredits key 生效 → 显示积分已用尽 (credits_exhausted)', () => {

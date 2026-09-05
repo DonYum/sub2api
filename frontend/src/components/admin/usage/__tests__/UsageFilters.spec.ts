@@ -23,11 +23,17 @@ const messages: Record<string, string> = {
   'admin.usage.allBillingTypes': 'All Billing Types',
   'admin.usage.billingTypeBalance': 'Balance',
   'admin.usage.billingTypeSubscription': 'Subscription',
+  'usage.reasoningEffort': 'Reasoning Effort',
+  'admin.usage.allReasoningEfforts': 'All Reasoning Efforts',
   'admin.usage.billingMode': 'Billing Mode',
   'admin.usage.allBillingModes': 'All Billing Modes',
   'admin.usage.billingModeToken': 'Token',
   'admin.usage.billingModePerRequest': 'Per Request',
   'admin.usage.billingModeImage': 'Image',
+	'admin.usage.upstreamModelAudit': 'Upstream model audit',
+	'admin.usage.allUpstreamModelAudit': 'All response model states',
+	'admin.usage.upstreamModelMismatchOnly': 'Mismatched only',
+	'admin.usage.upstreamModelMatchedOnly': 'Matched only',
   'admin.usage.group': 'Group',
   'admin.usage.allGroups': 'All Groups',
   'common.refresh': 'Refresh',
@@ -75,6 +81,8 @@ const defaultFilters = () => ({
   request_type: null,
   billing_type: null,
   billing_mode: null,
+  reasoning_effort: null,
+  upstream_model_mismatch: null,
   group_id: null,
   start_date: '',
   end_date: '',
@@ -97,6 +105,17 @@ function mountFilters(filters = defaultFilters()) {
       },
     },
   })
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve
+    reject = promiseReject
+  })
+
+  return { promise, resolve, reject }
 }
 
 describe('UsageFilters — user search dropdown', () => {
@@ -163,6 +182,56 @@ describe('UsageFilters — user search dropdown', () => {
     // (the component uses toRef so modelValue is mutated in place and 'change' is emitted)
     expect(wrapper.props('modelValue').user_id).toBe(1)
   })
+
+  it('keeps results from the latest user search when responses arrive out of order', async () => {
+    const firstSearch = deferred<Array<{ id: number; email: string; deleted: boolean }>>()
+    const secondSearch = deferred<Array<{ id: number; email: string; deleted: boolean }>>()
+    mockSearchUsers
+      .mockImplementationOnce(() => firstSearch.promise)
+      .mockImplementationOnce(() => secondSearch.promise)
+
+    const wrapper = mountFilters()
+    const input = wrapper.find('input[type="text"]')
+    await input.trigger('focus')
+
+    await input.setValue('a')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    await input.setValue('ab')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    secondSearch.resolve([{ id: 2, email: 'ab@test.com', deleted: false }])
+    await flushPromises()
+    expect(wrapper.text()).toContain('ab@test.com')
+
+    firstSearch.resolve([{ id: 1, email: 'a@test.com', deleted: false }])
+    await flushPromises()
+    expect(wrapper.text()).toContain('ab@test.com')
+    expect(wrapper.text()).not.toContain('a@test.com')
+  })
+
+  it('does not restore stale user results after the search is cleared', async () => {
+    const pendingSearch = deferred<Array<{ id: number; email: string; deleted: boolean }>>()
+    mockSearchUsers.mockImplementationOnce(() => pendingSearch.promise)
+
+    const wrapper = mountFilters()
+    const input = wrapper.find('input[type="text"]')
+    await input.trigger('focus')
+
+    await input.setValue('stale')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    await input.setValue('')
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    pendingSearch.resolve([{ id: 3, email: 'stale@test.com', deleted: false }])
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('stale@test.com')
+  })
 })
 
 describe('UsageFilters — model options come from prop (no dup request)', () => {
@@ -191,5 +260,40 @@ describe('UsageFilters — model options come from prop (no dup request)', () =>
 
     const opts = (wrapper.vm as any).modelOptions as Array<{ value: string | null; label: string }>
     expect(opts.map((o) => o.value)).toEqual([null, 'claude-3', 'gpt-4o'])
+  })
+})
+
+describe('UsageFilters — reasoning effort', () => {
+  it('shows the canonical options in usage mode', () => {
+    const wrapper = mountFilters()
+
+    expect(wrapper.text()).toContain('Reasoning Effort')
+    const options = (wrapper.vm as any).reasoningEffortOptions as Array<{ value: string | null }>
+    expect(options.map((option) => option.value)).toEqual([
+      null,
+      'minimal',
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+    ])
+  })
+
+  it('hides the reasoning filter in errors mode', () => {
+    const wrapper = mount(UsageFilters, {
+      props: {
+        modelValue: defaultFilters(),
+        exporting: false,
+        startDate: '2026-05-01',
+        endDate: '2026-05-28',
+        showActions: false,
+        mode: 'errors',
+        modelOptions: [],
+      },
+      global: { stubs: { Select: true, Teleport: true } },
+    })
+
+    expect(wrapper.text()).not.toContain('Reasoning Effort')
   })
 })

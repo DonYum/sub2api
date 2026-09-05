@@ -231,7 +231,7 @@ import Icon from '@/components/icons/Icon.vue'
 import UserErrorRequestsTable from '@/components/user/UserErrorRequestsTable.vue'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import { formatReasoningEffort } from '@/utils/format'
-import { BILLING_MODE_IMAGE, getBillingModeLabel } from '@/utils/billingMode'
+import { getBillingModeLabel, getDisplayBillingMode as resolveDisplayBillingMode } from '@/utils/billingMode'
 import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usageRequestType'
 import type {
   ApiKey,
@@ -376,6 +376,7 @@ const granularityOptions = computed<SelectOption[]>(() => [
 const requestTypeOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allTypes') },
   { value: 'ws_v2', label: t('usage.ws') },
+  { value: 'live', label: t('usage.live') },
   { value: 'stream', label: t('usage.stream') },
   { value: 'sync', label: t('usage.sync') },
 ])
@@ -389,6 +390,7 @@ const billingModeOptions = computed<SelectOption[]>(() => [
   { value: 'token', label: t('admin.usage.billingModeToken') },
   { value: 'per_request', label: t('admin.usage.billingModePerRequest') },
   { value: 'image', label: t('admin.usage.billingModeImage') },
+  { value: 'video', label: t('admin.usage.billingModeVideo') },
 ])
 
 const apiKeys = ref<ApiKey[]>([])
@@ -594,6 +596,7 @@ const handleIpGeoBatchFailed = () => {
 const getRequestTypeExportText = (log: UsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'cyber') return 'Cyber'
+  if (requestType === 'live') return 'Live'
   if (requestType === 'ws_v2') return 'WS'
   if (requestType === 'stream') return 'Stream'
   if (requestType === 'sync') return 'Sync'
@@ -602,10 +605,7 @@ const getRequestTypeExportText = (log: UsageLog): string => {
 
 const getDisplayBillingMode = (
   row: Pick<UsageLog, 'billing_mode' | 'image_count'> | null | undefined
-): string | null | undefined => {
-  if ((row?.image_count ?? 0) > 0) return BILLING_MODE_IMAGE
-  return row?.billing_mode
-}
+): string | null | undefined => resolveDisplayBillingMode(row)
 
 const escapeCSVValue = (value: unknown): string => {
   if (value == null) return ''
@@ -677,7 +677,7 @@ const exportToCSV = async () => {
       headers.map(escapeCSVValue).join(','),
       ...rows.map((row) => row.join(',')),
     ].join('\n')
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
@@ -708,8 +708,7 @@ const allColumns = computed<Column[]>(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
-  { key: 'first_token', label: t('usage.firstToken'), sortable: false },
-  { key: 'duration', label: t('usage.duration'), sortable: false },
+  { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
 ])

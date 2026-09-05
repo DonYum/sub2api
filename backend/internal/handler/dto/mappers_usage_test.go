@@ -110,11 +110,15 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	t.Parallel()
 
 	upstreamModel := "claude-sonnet-4-20250514"
+	upstreamResponseModel := "claude-sonnet-4-20250513"
+	upstreamModelMismatch := true
 	log := &service.UsageLog{
-		RequestID:      "req_4",
-		Model:          upstreamModel,
-		RequestedModel: "claude-sonnet-4",
-		UpstreamModel:  &upstreamModel,
+		RequestID:             "req_4",
+		Model:                 upstreamModel,
+		RequestedModel:        "claude-sonnet-4",
+		UpstreamModel:         &upstreamModel,
+		UpstreamResponseModel: &upstreamResponseModel,
+		UpstreamModelMismatch: &upstreamModelMismatch,
 	}
 
 	userDTO := UsageLogFromService(log)
@@ -126,10 +130,14 @@ func TestUsageLogFromService_UsesRequestedModelAndKeepsUpstreamAdminOnly(t *test
 	userJSON, err := json.Marshal(userDTO)
 	require.NoError(t, err)
 	require.NotContains(t, string(userJSON), "upstream_model")
+	require.NotContains(t, string(userJSON), "upstream_response_model")
+	require.NotContains(t, string(userJSON), "upstream_model_mismatch")
 
 	adminJSON, err := json.Marshal(adminDTO)
 	require.NoError(t, err)
 	require.Contains(t, string(adminJSON), `"upstream_model":"claude-sonnet-4-20250514"`)
+	require.Contains(t, string(adminJSON), `"upstream_response_model":"claude-sonnet-4-20250513"`)
+	require.Contains(t, string(adminJSON), `"upstream_model_mismatch":true`)
 }
 
 func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) {
@@ -169,6 +177,70 @@ func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *test
 	require.NotContains(t, string(userJSON), "account_rate_multiplier")
 	require.NotContains(t, string(userJSON), "account_stats_cost")
 	require.NotContains(t, string(userJSON), "account_cost")
+}
+
+func TestUsageLogFromService_IncludesCodingAgentMetadataForUserAndAdmin(t *testing.T) {
+	t.Parallel()
+
+	clientMachineID := "macbook-yf"
+	clientMachineSource := "x_client_machine"
+	clientDeviceID := "device-1"
+	clientAccountUUID := "account-uuid-1"
+	clientOriginator := "codex_cli_rs"
+	codexInstallationID := "install-1"
+	codexWindowID := "window-1"
+	codexSessionID := "session-1"
+	codexThreadID := "thread-1"
+	codexTurnID := "turn-1"
+	terminalHash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	log := &service.UsageLog{
+		RequestID:             "req_coding_agent_metadata",
+		Model:                 "gpt-5.6-sol",
+		ClientMachineID:       &clientMachineID,
+		ClientMachineSource:   &clientMachineSource,
+		ClientDeviceID:        &clientDeviceID,
+		ClientAccountUUID:     &clientAccountUUID,
+		ClientOriginator:      &clientOriginator,
+		CodexInstallationID:   &codexInstallationID,
+		CodexWindowID:         &codexWindowID,
+		CodexSessionID:        &codexSessionID,
+		CodexThreadID:         &codexThreadID,
+		CodexTurnID:           &codexTurnID,
+		TerminalHash:          &terminalHash,
+		AccountRateMultiplier: f64Ptr(1.5),
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+
+	for _, got := range []*UsageLog{userDTO, &adminDTO.UsageLog} {
+		require.Equal(t, &clientMachineID, got.ClientMachineID)
+		require.Equal(t, &clientMachineSource, got.ClientMachineSource)
+		require.Equal(t, &clientDeviceID, got.ClientDeviceID)
+		require.Equal(t, &clientAccountUUID, got.ClientAccountUUID)
+		require.Equal(t, &clientOriginator, got.ClientOriginator)
+		require.Equal(t, &codexInstallationID, got.CodexInstallationID)
+		require.Equal(t, &codexWindowID, got.CodexWindowID)
+		require.Equal(t, &codexSessionID, got.CodexSessionID)
+		require.Equal(t, &codexThreadID, got.CodexThreadID)
+		require.Equal(t, &codexTurnID, got.CodexTurnID)
+		require.Equal(t, &terminalHash, got.TerminalHash)
+	}
+
+	userJSON, err := json.Marshal(userDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(userJSON), `"client_machine_id":"macbook-yf"`)
+	require.Contains(t, string(userJSON), `"client_machine_source":"x_client_machine"`)
+	require.Contains(t, string(userJSON), `"client_device_id":"device-1"`)
+	require.Contains(t, string(userJSON), `"client_account_uuid":"account-uuid-1"`)
+	require.Contains(t, string(userJSON), `"client_originator":"codex_cli_rs"`)
+	require.Contains(t, string(userJSON), `"codex_installation_id":"install-1"`)
+	require.Contains(t, string(userJSON), `"codex_window_id":"window-1"`)
+	require.Contains(t, string(userJSON), `"codex_session_id":"session-1"`)
+	require.Contains(t, string(userJSON), `"codex_thread_id":"thread-1"`)
+	require.Contains(t, string(userJSON), `"codex_turn_id":"turn-1"`)
+	require.Contains(t, string(userJSON), `"terminal_hash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`)
+	require.NotContains(t, string(userJSON), "account_rate_multiplier")
 }
 
 func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *testing.T) {

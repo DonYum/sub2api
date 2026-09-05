@@ -162,6 +162,18 @@ func TestUserUsageListInvalidBillingMode(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
 
+func TestUserUsageListAllowsVideoBillingMode(t *testing.T) {
+	repo := &userUsageRepoCapture{}
+	router := newUserUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/usage?billing_mode=video", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "video", repo.listFilters.BillingMode)
+}
+
 func TestUserUsageListKeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) {
 	ipAddress := "203.0.113.10"
 	upstreamModel := "upstream-private-model"
@@ -212,6 +224,8 @@ func TestUserUsageListKeepsUserBillingAndIPWithoutAdminCostFields(t *testing.T) 
 	require.NotContains(t, body, "account_rate_multiplier")
 	require.NotContains(t, body, "account_stats_cost")
 	require.NotContains(t, body, "upstream_model")
+	require.NotContains(t, body, "upstream_response_model")
+	require.NotContains(t, body, "upstream_model_mismatch")
 	require.NotContains(t, body, "billing_tier")
 	require.NotContains(t, body, "channel_id")
 	require.NotContains(t, body, `"account":`)

@@ -60,6 +60,19 @@ func TestAdminUsageListRequestTypePriority(t *testing.T) {
 	require.Nil(t, repo.listFilters.Stream)
 }
 
+func TestAdminUsageListUsesRequestedModelForDisplayModelFilter(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?model=grok-imagine-video-1.5", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "grok-imagine-video-1.5", repo.listFilters.Model)
+	require.Equal(t, usagestats.ModelSourceRequested, repo.listFilters.ModelFilterSource)
+}
+
 func TestAdminUsageListInvalidRequestType(t *testing.T) {
 	repo := &adminUsageRepoCapture{}
 	router := newAdminUsageRequestTypeTestRouter(repo)
@@ -94,6 +107,30 @@ func TestAdminUsageListExactTotalTrue(t *testing.T) {
 	require.True(t, repo.listFilters.ExactTotal)
 }
 
+func TestAdminUsageListRequestIDFilter(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?request_id=req-0123", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "req-0123", repo.listFilters.RequestID)
+}
+
+func TestAdminUsageListReasoningEffortFilter(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage?reasoning_effort=%20X-HIGH%20", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "xhigh", repo.listFilters.ReasoningEffort)
+}
+
 func TestAdminUsageListInvalidExactTotal(t *testing.T) {
 	repo := &adminUsageRepoCapture{}
 	router := newAdminUsageRequestTypeTestRouter(repo)
@@ -117,6 +154,49 @@ func TestAdminUsageStatsRequestTypePriority(t *testing.T) {
 	require.NotNil(t, repo.statsFilters.RequestType)
 	require.Equal(t, int16(service.RequestTypeStream), *repo.statsFilters.RequestType)
 	require.Nil(t, repo.statsFilters.Stream)
+}
+
+func TestAdminUsageStatsUsesRequestedModelForDisplayModelFilter(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?model=grok-imagine-video-1.5", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "grok-imagine-video-1.5", repo.statsFilters.Model)
+	require.Equal(t, usagestats.ModelSourceRequested, repo.statsFilters.ModelFilterSource)
+}
+
+func TestAdminUsageStatsReasoningEffortFilter(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/usage/stats?reasoning_effort=MAX", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "max", repo.statsFilters.ReasoningEffort)
+}
+
+func TestAdminUsageInvalidReasoningEffort(t *testing.T) {
+	repo := &adminUsageRepoCapture{}
+	router := newAdminUsageRequestTypeTestRouter(repo)
+
+	for _, path := range []string{"/admin/usage?reasoning_effort=ultra", "/admin/usage/stats?reasoning_effort=ultra"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestUsageStatsCacheKeySeparatesReasoningEffort(t *testing.T) {
+	require.NotEqual(t,
+		usageStatsCacheKey(usagestats.UsageLogFilters{ReasoningEffort: "high"}),
+		usageStatsCacheKey(usagestats.UsageLogFilters{ReasoningEffort: "low"}),
+	)
 }
 
 func TestAdminUsageStatsInvalidRequestType(t *testing.T) {

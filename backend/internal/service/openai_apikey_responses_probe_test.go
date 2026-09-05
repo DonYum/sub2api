@@ -1,11 +1,53 @@
 package service
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/stretchr/testify/require"
 )
+
+func TestProbeOpenAIAPIKeyResponsesSupportUsesCodexProbeHeaders(t *testing.T) {
+	updateCalls := make(chan map[string]any, 1)
+	account := Account{
+		ID:          96,
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://compat-upstream.example/v1",
+		},
+	}
+	repo := &snapshotUpdateAccountRepo{
+		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+		updateExtraCalls:      updateCalls,
+	}
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     make(http.Header),
+		Body:       io.NopCloser(strings.NewReader(`{"output":[{"type":"function_call","name":"probe_ping"}]}`)),
+	}}
+	svc := &AccountTestService{
+		accountRepo:  repo,
+		httpUpstream: upstream,
+		cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+	}
+
+	svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+	require.NotNil(t, upstream.lastReq)
+	require.Equal(t, "https://compat-upstream.example/v1/responses", upstream.lastReq.URL.String())
+	requireOpenAICodexProbeHeaders(t, upstream.lastReq.Header)
+	updates := <-updateCalls
+	require.Equal(t, true, updates[openai_compat.ExtraKeyResponsesSupported])
+}
 
 func TestDecideResponsesProbeSupport(t *testing.T) {
 	fnCall := []byte(`{"output":[{"type":"reasoning"},{"type":"function_call","name":"probe_ping"}]}`)
@@ -75,4 +117,21 @@ func TestSelectResponsesProbeModel(t *testing.T) {
 		"model_mapping": map[string]any{"a": "gpt-*"},
 	}}
 	require.Equal(t, openai.DefaultTestModel, selectResponsesProbeModel(acctAllWild))
+}
+
+func TestResponsesProbeConcreteModelCount(t *testing.T) {
+	require.Equal(t, 0, responsesProbeConcreteModelCount(&Account{}))
+	require.Equal(t, 1, responsesProbeConcreteModelCount(&Account{Credentials: map[string]any{
+		"model_mapping": map[string]any{
+			"a": "gpt-5.6-sol",
+			"b": "gpt-5.6-sol",
+			"c": "gpt-*",
+		},
+	}}))
+	require.Equal(t, 2, responsesProbeConcreteModelCount(&Account{Credentials: map[string]any{
+		"model_mapping": map[string]any{
+			"a": "codex-auto-review",
+			"b": "gpt-5.6-sol",
+		},
+	}}))
 }

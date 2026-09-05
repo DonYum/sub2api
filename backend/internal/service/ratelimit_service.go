@@ -116,6 +116,14 @@ func (s *RateLimitService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlocke
 	s.runtimeBlocker = blocker
 }
 
+func (s *RateLimitService) IsOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx context.Context) bool {
+	if s == nil || s.settingService == nil {
+		return false
+	}
+	gateway := &OpenAIGatewayService{rateLimitService: s}
+	return gateway.isOpenAIAdvancedSchedulerStickyWeightedEnabled(ctx)
+}
+
 func (s *RateLimitService) notifyAccountSchedulingBlocked(account *Account, until time.Time, reason string) {
 	if s == nil || s.runtimeBlocker == nil || account == nil {
 		return
@@ -130,6 +138,97 @@ func (s *RateLimitService) notifyAccountSchedulingBlockCleared(accountID int64) 
 	s.runtimeBlocker.ClearAccountSchedulingBlock(accountID)
 }
 
+// ApplyAccountSchedulingThreshold evaluates admin-configured per-platform
+// utilization thresholds and, when breached, parks the account as temp-
+// unschedulable until the winning window resets. Returns true when the account
+// is blocked (either newly or already paused for the same threshold reason).
+func (s *RateLimitService) ApplyAccountSchedulingThreshold(ctx context.Context, account *Account) bool {
+	if s == nil || s.settingService == nil || s.accountRepo == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	if !account.IsActive() || !account.Schedulable {
+		return false
+	}
+
+	now := time.Now().UTC()
+	thresholds := s.settingService.GetAccountSchedulingThresholds(ctx)
+	decision := EvaluateAccountSchedulingThreshold(account, thresholds, now)
+	if !decision.ShouldPause || decision.Until == nil || !decision.Until.After(now) {
+		return false
+	}
+
+	reason := BuildDetailedAccountSchedulingThresholdReason(AccountSchedulingThresholdReasonInput{
+		Platform:         decision.Platform,
+		Window:           decision.Window,
+		Scope:            decision.Scope,
+		ThresholdPercent: decision.ThresholdPercent,
+		UsedPercent:      decision.UsedPercent,
+		Until:            *decision.Until,
+		Now:              now,
+	})
+
+	if accountHasSameSchedulingThresholdPause(account, *decision.Until, reason) {
+		return true
+	}
+	if !account.IsSchedulable() {
+		return false
+	}
+
+	account.TempUnschedulableUntil = cloneTimePtr(decision.Until)
+	account.TempUnschedulableReason = reason
+	s.notifyAccountSchedulingBlocked(account, *decision.Until, "account_scheduling_threshold")
+
+	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, *decision.Until, reason); err != nil {
+		slog.Warn("account_scheduling_threshold_set_temp_unsched_failed",
+			"account_id", account.ID,
+			"platform", decision.Platform,
+			"window", decision.Window,
+			"scope", decision.Scope,
+			"threshold_percent", decision.ThresholdPercent,
+			"used_percent", decision.UsedPercent,
+			"until", decision.Until.UTC(),
+			"error", err)
+	} else if s.tempUnschedCache != nil {
+		if state := tempUnschedStateFromStoredReason(reason, decision.Until.Unix()); state != nil {
+			if err := s.tempUnschedCache.SetTempUnsched(ctx, account.ID, state); err != nil {
+				slog.Warn("account_scheduling_threshold_cache_set_failed", "account_id", account.ID, "error", err)
+			}
+		}
+	}
+
+	slog.Info("account_scheduling_threshold_temp_unschedulable",
+		"account_id", account.ID,
+		"platform", decision.Platform,
+		"window", decision.Window,
+		"scope", decision.Scope,
+		"threshold_percent", decision.ThresholdPercent,
+		"used_percent", decision.UsedPercent,
+		"until", decision.Until.UTC())
+	return true
+}
+
+func accountHasSameSchedulingThresholdPause(account *Account, until time.Time, reason string) bool {
+	if account == nil || account.TempUnschedulableUntil == nil {
+		return false
+	}
+	if account.TempUnschedulableUntil.UTC().Unix() != until.UTC().Unix() {
+		return false
+	}
+
+	existing, ok := parseTempUnschedReasonPayload(account.TempUnschedulableReason)
+	if !ok || existing.Source != AccountSchedulingThresholdReasonSource {
+		return false
+	}
+	next, ok := parseTempUnschedReasonPayload(reason)
+	if !ok || next.Source != AccountSchedulingThresholdReasonSource {
+		return false
+	}
+
+	existing.TriggeredAtUnix = 0
+	next.TriggeredAtUnix = 0
+	return existing == next
+}
+
 // ErrorPolicyResult 表示错误策略检查的结果
 type ErrorPolicyResult int
 
@@ -142,7 +241,8 @@ const (
 
 // CheckErrorPolicy 检查自定义错误码和临时不可调度规则。
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
-func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte) ErrorPolicyResult {
+func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) ErrorPolicyResult {
+	ctx = withTempUnschedulableModel(ctx, requestedModel)
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
 			return ErrorPolicyMatched
@@ -151,9 +251,14 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 		return ErrorPolicySkipped
 	}
 	if account.IsPoolMode() {
+		// 池模式只跳过默认账号状态处理；管理员显式配置的临时不可调度规则仍应生效。
+		// 401 保留现有认证错误语义，避免改变重复 401 的升级行为。
+		if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return ErrorPolicyTempUnscheduled
+		}
 		return ErrorPolicySkipped
 	}
-	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+	if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 		return ErrorPolicyTempUnscheduled
 	}
 	return ErrorPolicyNone
@@ -162,10 +267,15 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 // HandleUpstreamError 处理上游错误响应，标记账号状态
 // 返回是否应该停止该账号的调度
 func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte, requestedModel ...string) (shouldDisable bool) {
+	ctx = withTempUnschedulableModel(ctx, requestedModel)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
-	// 池模式默认不标记本地账号状态；仅当用户显式配置自定义错误码时按本地策略处理。
+	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
+	// 401 保留现有认证错误语义，不在这里改变池模式的认证处理。
 	if account.IsPoolMode() && !customErrorCodesEnabled {
+		if statusCode != http.StatusUnauthorized && s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+			return true
+		}
 		slog.Info("pool_mode_error_skipped", "account_id", account.ID, "status_code", statusCode)
 		return false
 	}
@@ -199,7 +309,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// 先尝试临时不可调度规则（401除外）
 	// 如果匹配成功，直接返回，不执行后续禁用逻辑
 	if statusCode != 401 {
-		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody) {
+		if s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel)) {
 			return true
 		}
 	}
@@ -291,6 +401,20 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			msg := "Authentication failed (401): invalid or expired credentials"
 			if upstreamMsg != "" {
 				msg = "OAuth 401: " + upstreamMsg
+			}
+			if authAccount.Platform == PlatformAntigravity {
+				extraUpdates := antigravityForceTokenRefreshExtra("401_invalid")
+				if err := s.accountRepo.UpdateExtra(ctx, authAccount.ID, extraUpdates); err != nil {
+					slog.Warn("antigravity_401_force_refresh_mark_failed", "account_id", authAccount.ID, "error", err)
+				} else {
+					if authAccount.Extra == nil {
+						authAccount.Extra = make(map[string]any, len(extraUpdates))
+					}
+					for k, v := range extraUpdates {
+						authAccount.Extra[k] = v
+					}
+					slog.Info("antigravity_401_force_refresh_marked", "account_id", authAccount.ID)
+				}
 			}
 			cooldownMinutes := s.cfg.RateLimit.OAuth401CooldownMinutes
 			if cooldownMinutes <= 0 {
@@ -790,6 +914,28 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 }
 
 func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	// 上游代理 / CDN 在请求到达 OpenAI API 之前就拦下时，回的是 HTML 403 页面而不是
+	// {"error":{...}} 结构化错误。这类响应描述的是「这条链路 / 这个端点被挡了」，
+	// 不构成账号凭据或权限失效的证据——例如无效的 /v1/responses 子路径（#5334）。
+	//
+	// 据此写账号状态会把请求级错误放大成账号级处罚：首次即 temp-unschedulable，
+	// 连续 openAI403DisableThreshold 次直接永久禁用；而 403 又在 failover 状态集里，
+	// 同一个坏请求会被逐个账号重放，足以把整组账号打下线。
+	//
+	// 与既有口径一致：count_tokens 路径的 isOpenAIOAuthInputTokensUnsupported 已把
+	// 「HTML 403 page without a structured error」按端点级响应处理；
+	// shouldApplyOpenAIAlphaSearchAccountErrorSideEffects 的不变式也是端点级错误
+	// 只换号、不写账号错误状态。这里只跳过账号处罚，不改变 failover 行为——
+	// 换个走不同代理的账号仍有可能成功。
+	if isHTMLResponse(responseBody) {
+		slog.Warn(
+			"openai_403_html_body_skips_account_penalty",
+			"account_id", account.ID,
+			"upstream_message", upstreamMsg,
+		)
+		return false
+	}
+
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
@@ -972,12 +1118,15 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		}
 
 		// Anthropic 平台：没有限流重置时间的 429 可能是非真实限流（如 Extra usage required），
-		// 不标记账号限流状态，直接透传错误给客户端
+		// 不适合按 5h/7d 窗口长时间封禁；但完全不标记会导致账号永不冷却，
+		// 调度器让每个请求反复撞同一批持续 429 的账号（failover 预算被白白烧掉，
+		// 客户端稳定收到 429）。因此同样走可配置的秒级兜底回避，管理端可调大或关闭。
 		if account.Platform == PlatformAnthropic {
-			slog.Warn("rate_limit_429_no_reset_time_skipped",
+			slog.Warn("rate_limit_429_no_reset_time",
 				"account_id", account.ID,
 				"platform", account.Platform,
 				"reason", "no rate limit reset time in headers, likely not a real rate limit")
+			s.apply429FallbackRateLimit(ctx, account, "anthropic_no_reset_time")
 			return
 		}
 
@@ -1866,14 +2015,18 @@ func (s *RateLimitService) GetTempUnschedStatus(ctx context.Context, accountID i
 	return state, nil
 }
 
-func (s *RateLimitService) HandleTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+func (s *RateLimitService) HandleTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
+		return false
+	}
+	if account.IsPoolMode() && !account.IsCustomErrorCodesEnabled() {
 		return false
 	}
 	if !account.ShouldHandleErrorCode(statusCode) {
 		return false
 	}
-	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody)
+	ctx = withTempUnschedulableModel(ctx, requestedModel)
+	return s.tryTempUnschedulable(ctx, account, statusCode, responseBody, firstRequestedModel(requestedModel))
 }
 
 func (s *RateLimitService) HandleOpenAIImageRateLimit(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) bool {
@@ -1981,9 +2134,19 @@ func parseOpenAIImageTryAgainCooldown(body []byte) time.Duration {
 
 const upstreamModelNotFoundCooldown = 30 * time.Minute
 const upstreamModelNotFoundReason = "upstream_404_model_not_found"
+const upstreamCodexPlanGatedModelCooldown = 30 * time.Minute
+const upstreamCodexPlanGatedModelReason = "upstream_400_codex_plan_gated_model"
 const tempUnschedBodyMaxBytes = 64 << 10
 const tempUnschedMessageMaxBytes = 2048
 
+// HandleUpstreamModelNotFound marks the requested model as temporarily
+// unavailable on the account when the upstream deterministically reports it
+// cannot serve that model: a 404 model-not-found, or the Codex 400 rejecting a
+// plan-gated model on a ChatGPT OAuth account. Returning true tells the caller
+// to fail the current attempt over to another account; the scheduler skips the
+// (account, model) pair via IsSchedulableForModelWithContext until the
+// cooldown expires, instead of re-selecting an account that can never serve
+// the model.
 func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string, statusCode int, responseBody []byte) bool {
 	if s == nil || account == nil || s.accountRepo == nil {
 		return false
@@ -1991,20 +2154,53 @@ func (s *RateLimitService) HandleUpstreamModelNotFound(ctx context.Context, acco
 	if !account.ShouldHandleErrorCode(statusCode) {
 		return false
 	}
-	if !isUpstreamModelNotFoundError(statusCode, responseBody) {
+	var cooldown time.Duration
+	var reason string
+	switch {
+	case isUpstreamModelNotFoundError(statusCode, responseBody):
+		cooldown, reason = upstreamModelNotFoundCooldown, upstreamModelNotFoundReason
+	case isOpenAIOAuthAccount(account) && isOpenAICodexPlanGatedModelError(statusCode, responseBody):
+		cooldown, reason = upstreamCodexPlanGatedModelCooldown, upstreamCodexPlanGatedModelReason
+	default:
 		return false
 	}
 	modelKey := modelRateLimitKeyForUpstreamModelNotFound(ctx, account, requestedModel)
 	if modelKey == "" {
 		return false
 	}
-	resetAt := time.Now().Add(upstreamModelNotFoundCooldown)
-	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, upstreamModelNotFoundReason); err != nil {
-		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "error", err)
+	if shouldSkipCodexPlanGatedImageModelCooldown(ctx, reason, requestedModel, modelKey) {
 		return true
 	}
-	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reset_at", resetAt)
+	resetAt := time.Now().Add(cooldown)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, resetAt, reason); err != nil {
+		slog.Warn("upstream_model_not_found_set_model_rate_limit_failed", "account_id", account.ID, "model", modelKey, "reason", reason, "error", err)
+		return true
+	}
+	slog.Info("upstream_model_not_found_model_rate_limited", "account_id", account.ID, "model", modelKey, "reason", reason, "reset_at", resetAt)
 	return true
+}
+
+// shouldSkipCodexPlanGatedImageModelCooldown 判断这次 Codex plan-gated 400 是否
+// 属于"图片模型被文本端点拒绝"。
+//
+// 这类错误是确定性的端点错配，不是账号能力缺失：同一账号通过 /v1/images/* 依然
+// 能出图。在这里写 per-model 冷却，会让一次用错端点的请求把整个号池对正确的生图
+// 端点下线（#4828）。
+//
+// 但请求本身就从 /v1/images/* 入站时不适用——那种情况下被拒说明账号确实不具备
+// 该模型能力，冷却是必要的刹车：没有它，每个生图请求都会完整走一遍号池，对上游
+// 形成无上界的 400 放大。
+//
+// 请求模型与最终冷却键都要判：冷却键走的是 account.GetMappedModel，账号可能把
+// 文本别名映射到 gpt-image-*，只判请求模型会漏掉这种形态。
+func shouldSkipCodexPlanGatedImageModelCooldown(ctx context.Context, reason, requestedModel, modelKey string) bool {
+	if reason != upstreamCodexPlanGatedModelReason {
+		return false
+	}
+	if OpenAIImagesEndpointFromContext(ctx) {
+		return false
+	}
+	return IsGPTImageGenerationModel(requestedModel) || IsGPTImageGenerationModel(modelKey)
 }
 
 func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Account, requestedModel string) string {
@@ -2024,7 +2220,71 @@ func modelRateLimitKeyForUpstreamModelNotFound(ctx context.Context, account *Acc
 	return modelKey
 }
 
-func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte) bool {
+func firstRequestedModel(requestedModel []string) string {
+	if len(requestedModel) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(requestedModel[0])
+}
+
+type tempUnschedulableModelContextKey struct{}
+
+func withTempUnschedulableModel(ctx context.Context, requestedModel []string) context.Context {
+	model := firstRequestedModel(requestedModel)
+	if model == "" {
+		return ctx
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, tempUnschedulableModelContextKey{}, model)
+}
+
+func tempUnschedulableModel(ctx context.Context, requestedModel []string) string {
+	if model := firstRequestedModel(requestedModel); model != "" {
+		return model
+	}
+	if ctx == nil {
+		return ""
+	}
+	model, _ := ctx.Value(tempUnschedulableModelContextKey{}).(string)
+	return strings.TrimSpace(model)
+}
+
+type tempUnschedulableRuleMatch struct {
+	rule           TempUnschedulableRule
+	ruleIndex      int
+	matchedKeyword string
+}
+
+func matchTempUnschedulableRules(account *Account, statusCode int, responseBody []byte) []tempUnschedulableRuleMatch {
+	if account == nil || !account.IsTempUnschedulableEnabled() || statusCode <= 0 || len(responseBody) == 0 {
+		return nil
+	}
+	rules := account.GetTempUnschedulableRules()
+	if len(rules) == 0 {
+		return nil
+	}
+	body := responseBody
+	if len(body) > tempUnschedBodyMaxBytes {
+		body = body[:tempUnschedBodyMaxBytes]
+	}
+	bodyLower := strings.ToLower(string(body))
+	matches := make([]tempUnschedulableRuleMatch, 0, 1)
+	for idx, rule := range rules {
+		if rule.ErrorCode != statusCode || len(rule.Keywords) == 0 {
+			continue
+		}
+		matchedKeyword := matchTempUnschedKeyword(bodyLower, rule.Keywords)
+		if matchedKeyword == "" {
+			continue
+		}
+		matches = append(matches, tempUnschedulableRuleMatch{rule: rule, ruleIndex: idx, matchedKeyword: matchedKeyword})
+	}
+	return matches
+}
+
+func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
 		return false
 	}
@@ -2048,30 +2308,8 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 			return false
 		}
 	}
-	rules := account.GetTempUnschedulableRules()
-	if len(rules) == 0 {
-		return false
-	}
-	if statusCode <= 0 || len(responseBody) == 0 {
-		return false
-	}
-
-	body := responseBody
-	if len(body) > tempUnschedBodyMaxBytes {
-		body = body[:tempUnschedBodyMaxBytes]
-	}
-	bodyLower := strings.ToLower(string(body))
-
-	for idx, rule := range rules {
-		if rule.ErrorCode != statusCode || len(rule.Keywords) == 0 {
-			continue
-		}
-		matchedKeyword := matchTempUnschedKeyword(bodyLower, rule.Keywords)
-		if matchedKeyword == "" {
-			continue
-		}
-
-		if s.triggerTempUnschedulable(ctx, account, rule, idx, statusCode, matchedKeyword, responseBody) {
+	for _, match := range matchTempUnschedulableRules(account, statusCode, responseBody) {
+		if s.triggerTempUnschedulable(ctx, account, match.rule, match.ruleIndex, statusCode, match.matchedKeyword, responseBody, tempUnschedulableModel(ctx, requestedModel)) {
 			return true
 		}
 	}
@@ -2111,7 +2349,7 @@ func matchTempUnschedKeyword(bodyLower string, keywords []string) string {
 	return ""
 }
 
-func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte) bool {
+func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account *Account, rule TempUnschedulableRule, ruleIndex int, statusCode int, matchedKeyword string, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
 		return false
 	}
@@ -2137,6 +2375,21 @@ func (s *RateLimitService) triggerTempUnschedulable(ctx context.Context, account
 	}
 	if reason == "" {
 		reason = strings.TrimSpace(state.ErrorMessage)
+	}
+
+	// Persist known-model failures under the model key so the scheduler excludes
+	// only this (account, model) pair. Authentication and model-unknown failures
+	// retain the legacy account-wide temporary-unschedulable behavior below.
+	modelKey := firstRequestedModel(requestedModel)
+	if modelKey != "" && statusCode != http.StatusUnauthorized {
+		if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, until, reason); err != nil {
+			slog.Warn("temp_unsched_model_rate_limit_set_failed", "account_id", account.ID, "model", modelKey, "error", err)
+			// The rule matched, so fail over the current request even if persistence
+			// failed; never widen a model-scoped failure into an account-wide block.
+			return true
+		}
+		slog.Info("account_model_temp_unschedulable", "account_id", account.ID, "model", modelKey, "until", until, "rule_index", ruleIndex, "status_code", statusCode)
+		return true
 	}
 
 	s.notifyAccountSchedulingBlocked(account, until, "temp_unschedulable")

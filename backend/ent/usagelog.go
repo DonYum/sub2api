@@ -37,6 +37,10 @@ type UsageLog struct {
 	RequestedModel *string `json:"requested_model,omitempty"`
 	// UpstreamModel holds the value of the "upstream_model" field.
 	UpstreamModel *string `json:"upstream_model,omitempty"`
+	// UpstreamResponseModel holds the value of the "upstream_response_model" field.
+	UpstreamResponseModel *string `json:"upstream_response_model,omitempty"`
+	// UpstreamModelMismatch holds the value of the "upstream_model_mismatch" field.
+	UpstreamModelMismatch *bool `json:"upstream_model_mismatch,omitempty"`
 	// 渠道 ID
 	ChannelID *int64 `json:"channel_id,omitempty"`
 	// 模型映射链
@@ -75,6 +79,8 @@ type UsageLog struct {
 	ActualCost float64 `json:"actual_cost,omitempty"`
 	// RateMultiplier holds the value of the "rate_multiplier" field.
 	RateMultiplier float64 `json:"rate_multiplier,omitempty"`
+	// Whether long-context pricing changed token prices for this request
+	LongContextBillingApplied bool `json:"long_context_billing_applied,omitempty"`
 	// AccountRateMultiplier holds the value of the "account_rate_multiplier" field.
 	AccountRateMultiplier *float64 `json:"account_rate_multiplier,omitempty"`
 	// BillingType holds the value of the "billing_type" field.
@@ -89,6 +95,30 @@ type UsageLog struct {
 	UserAgent *string `json:"user_agent,omitempty"`
 	// IPAddress holds the value of the "ip_address" field.
 	IPAddress *string `json:"ip_address,omitempty"`
+	// 客户端显式会话标识
+	SessionID *string `json:"session_id,omitempty"`
+	// coding agent 客户端机器/安装标识原始值
+	ClientMachineID *string `json:"client_machine_id,omitempty"`
+	// client_machine_id 来源
+	ClientMachineSource *string `json:"client_machine_source,omitempty"`
+	// metadata.user_id device_id
+	ClientDeviceID *string `json:"client_device_id,omitempty"`
+	// metadata.user_id account_uuid
+	ClientAccountUUID *string `json:"client_account_uuid,omitempty"`
+	// Originator 请求头
+	ClientOriginator *string `json:"client_originator,omitempty"`
+	// Codex installation_id
+	CodexInstallationID *string `json:"codex_installation_id,omitempty"`
+	// Codex window_id
+	CodexWindowID *string `json:"codex_window_id,omitempty"`
+	// Codex session_id
+	CodexSessionID *string `json:"codex_session_id,omitempty"`
+	// Codex thread_id
+	CodexThreadID *string `json:"codex_thread_id,omitempty"`
+	// Codex turn_id
+	CodexTurnID *string `json:"codex_turn_id,omitempty"`
+	// 终端画像聚合 hash，仅用于分组分析
+	TerminalHash *string `json:"terminal_hash,omitempty"`
 	// ImageCount holds the value of the "image_count" field.
 	ImageCount int `json:"image_count,omitempty"`
 	// ImageSize holds the value of the "image_size" field.
@@ -101,6 +131,12 @@ type UsageLog struct {
 	ImageSizeSource *string `json:"image_size_source,omitempty"`
 	// ImageSizeBreakdown holds the value of the "image_size_breakdown" field.
 	ImageSizeBreakdown map[string]int `json:"image_size_breakdown,omitempty"`
+	// 视频生成数量；>0 表示本行是视频生成用量
+	VideoCount int `json:"video_count,omitempty"`
+	// 计费用视频分辨率 480p/720p/1080p
+	VideoResolution *string `json:"video_resolution,omitempty"`
+	// 提交时请求的视频时长（秒），按秒计费的乘数
+	VideoDurationSeconds *int `json:"video_duration_seconds,omitempty"`
 	// CacheTTLOverridden holds the value of the "cache_ttl_overridden" field.
 	CacheTTLOverridden bool `json:"cache_ttl_overridden,omitempty"`
 	// CreatedAt holds the value of the "created_at" field.
@@ -190,13 +226,13 @@ func (*UsageLog) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case usagelog.FieldImageSizeBreakdown:
 			values[i] = new([]byte)
-		case usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
+		case usagelog.FieldUpstreamModelMismatch, usagelog.FieldLongContextBillingApplied, usagelog.FieldStream, usagelog.FieldCacheTTLOverridden:
 			values[i] = new(sql.NullBool)
 		case usagelog.FieldInputCost, usagelog.FieldOutputCost, usagelog.FieldCacheCreationCost, usagelog.FieldCacheReadCost, usagelog.FieldTotalCost, usagelog.FieldActualCost, usagelog.FieldRateMultiplier, usagelog.FieldAccountRateMultiplier:
 			values[i] = new(sql.NullFloat64)
-		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount:
+		case usagelog.FieldID, usagelog.FieldUserID, usagelog.FieldAPIKeyID, usagelog.FieldAccountID, usagelog.FieldChannelID, usagelog.FieldGroupID, usagelog.FieldSubscriptionID, usagelog.FieldInputTokens, usagelog.FieldOutputTokens, usagelog.FieldCacheCreationTokens, usagelog.FieldCacheReadTokens, usagelog.FieldCacheCreation5mTokens, usagelog.FieldCacheCreation1hTokens, usagelog.FieldBillingType, usagelog.FieldDurationMs, usagelog.FieldFirstTokenMs, usagelog.FieldImageCount, usagelog.FieldVideoCount, usagelog.FieldVideoDurationSeconds:
 			values[i] = new(sql.NullInt64)
-		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource:
+		case usagelog.FieldRequestID, usagelog.FieldModel, usagelog.FieldRequestedModel, usagelog.FieldUpstreamModel, usagelog.FieldUpstreamResponseModel, usagelog.FieldModelMappingChain, usagelog.FieldBillingTier, usagelog.FieldBillingMode, usagelog.FieldUserAgent, usagelog.FieldIPAddress, usagelog.FieldSessionID, usagelog.FieldClientMachineID, usagelog.FieldClientMachineSource, usagelog.FieldClientDeviceID, usagelog.FieldClientAccountUUID, usagelog.FieldClientOriginator, usagelog.FieldCodexInstallationID, usagelog.FieldCodexWindowID, usagelog.FieldCodexSessionID, usagelog.FieldCodexThreadID, usagelog.FieldCodexTurnID, usagelog.FieldTerminalHash, usagelog.FieldImageSize, usagelog.FieldImageInputSize, usagelog.FieldImageOutputSize, usagelog.FieldImageSizeSource, usagelog.FieldVideoResolution:
 			values[i] = new(sql.NullString)
 		case usagelog.FieldCreatedAt:
 			values[i] = new(sql.NullTime)
@@ -264,6 +300,20 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.UpstreamModel = new(string)
 				*_m.UpstreamModel = value.String
+			}
+		case usagelog.FieldUpstreamResponseModel:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field upstream_response_model", values[i])
+			} else if value.Valid {
+				_m.UpstreamResponseModel = new(string)
+				*_m.UpstreamResponseModel = value.String
+			}
+		case usagelog.FieldUpstreamModelMismatch:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field upstream_model_mismatch", values[i])
+			} else if value.Valid {
+				_m.UpstreamModelMismatch = new(bool)
+				*_m.UpstreamModelMismatch = value.Bool
 			}
 		case usagelog.FieldChannelID:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
@@ -385,6 +435,12 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.RateMultiplier = value.Float64
 			}
+		case usagelog.FieldLongContextBillingApplied:
+			if value, ok := values[i].(*sql.NullBool); !ok {
+				return fmt.Errorf("unexpected type %T for field long_context_billing_applied", values[i])
+			} else if value.Valid {
+				_m.LongContextBillingApplied = value.Bool
+			}
 		case usagelog.FieldAccountRateMultiplier:
 			if value, ok := values[i].(*sql.NullFloat64); !ok {
 				return fmt.Errorf("unexpected type %T for field account_rate_multiplier", values[i])
@@ -432,6 +488,90 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				_m.IPAddress = new(string)
 				*_m.IPAddress = value.String
 			}
+		case usagelog.FieldSessionID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field session_id", values[i])
+			} else if value.Valid {
+				_m.SessionID = new(string)
+				*_m.SessionID = value.String
+			}
+		case usagelog.FieldClientMachineID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_machine_id", values[i])
+			} else if value.Valid {
+				_m.ClientMachineID = new(string)
+				*_m.ClientMachineID = value.String
+			}
+		case usagelog.FieldClientMachineSource:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_machine_source", values[i])
+			} else if value.Valid {
+				_m.ClientMachineSource = new(string)
+				*_m.ClientMachineSource = value.String
+			}
+		case usagelog.FieldClientDeviceID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_device_id", values[i])
+			} else if value.Valid {
+				_m.ClientDeviceID = new(string)
+				*_m.ClientDeviceID = value.String
+			}
+		case usagelog.FieldClientAccountUUID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_account_uuid", values[i])
+			} else if value.Valid {
+				_m.ClientAccountUUID = new(string)
+				*_m.ClientAccountUUID = value.String
+			}
+		case usagelog.FieldClientOriginator:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field client_originator", values[i])
+			} else if value.Valid {
+				_m.ClientOriginator = new(string)
+				*_m.ClientOriginator = value.String
+			}
+		case usagelog.FieldCodexInstallationID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_installation_id", values[i])
+			} else if value.Valid {
+				_m.CodexInstallationID = new(string)
+				*_m.CodexInstallationID = value.String
+			}
+		case usagelog.FieldCodexWindowID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_window_id", values[i])
+			} else if value.Valid {
+				_m.CodexWindowID = new(string)
+				*_m.CodexWindowID = value.String
+			}
+		case usagelog.FieldCodexSessionID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_session_id", values[i])
+			} else if value.Valid {
+				_m.CodexSessionID = new(string)
+				*_m.CodexSessionID = value.String
+			}
+		case usagelog.FieldCodexThreadID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_thread_id", values[i])
+			} else if value.Valid {
+				_m.CodexThreadID = new(string)
+				*_m.CodexThreadID = value.String
+			}
+		case usagelog.FieldCodexTurnID:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field codex_turn_id", values[i])
+			} else if value.Valid {
+				_m.CodexTurnID = new(string)
+				*_m.CodexTurnID = value.String
+			}
+		case usagelog.FieldTerminalHash:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field terminal_hash", values[i])
+			} else if value.Valid {
+				_m.TerminalHash = new(string)
+				*_m.TerminalHash = value.String
+			}
 		case usagelog.FieldImageCount:
 			if value, ok := values[i].(*sql.NullInt64); !ok {
 				return fmt.Errorf("unexpected type %T for field image_count", values[i])
@@ -473,6 +613,26 @@ func (_m *UsageLog) assignValues(columns []string, values []any) error {
 				if err := json.Unmarshal(*value, &_m.ImageSizeBreakdown); err != nil {
 					return fmt.Errorf("unmarshal field image_size_breakdown: %w", err)
 				}
+			}
+		case usagelog.FieldVideoCount:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field video_count", values[i])
+			} else if value.Valid {
+				_m.VideoCount = int(value.Int64)
+			}
+		case usagelog.FieldVideoResolution:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field video_resolution", values[i])
+			} else if value.Valid {
+				_m.VideoResolution = new(string)
+				*_m.VideoResolution = value.String
+			}
+		case usagelog.FieldVideoDurationSeconds:
+			if value, ok := values[i].(*sql.NullInt64); !ok {
+				return fmt.Errorf("unexpected type %T for field video_duration_seconds", values[i])
+			} else if value.Valid {
+				_m.VideoDurationSeconds = new(int)
+				*_m.VideoDurationSeconds = int(value.Int64)
 			}
 		case usagelog.FieldCacheTTLOverridden:
 			if value, ok := values[i].(*sql.NullBool); !ok {
@@ -572,6 +732,16 @@ func (_m *UsageLog) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	if v := _m.UpstreamResponseModel; v != nil {
+		builder.WriteString("upstream_response_model=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.UpstreamModelMismatch; v != nil {
+		builder.WriteString("upstream_model_mismatch=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
+	builder.WriteString(", ")
 	if v := _m.ChannelID; v != nil {
 		builder.WriteString("channel_id=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
@@ -641,6 +811,9 @@ func (_m *UsageLog) String() string {
 	builder.WriteString("rate_multiplier=")
 	builder.WriteString(fmt.Sprintf("%v", _m.RateMultiplier))
 	builder.WriteString(", ")
+	builder.WriteString("long_context_billing_applied=")
+	builder.WriteString(fmt.Sprintf("%v", _m.LongContextBillingApplied))
+	builder.WriteString(", ")
 	if v := _m.AccountRateMultiplier; v != nil {
 		builder.WriteString("account_rate_multiplier=")
 		builder.WriteString(fmt.Sprintf("%v", *v))
@@ -672,6 +845,66 @@ func (_m *UsageLog) String() string {
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")
+	if v := _m.SessionID; v != nil {
+		builder.WriteString("session_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientMachineID; v != nil {
+		builder.WriteString("client_machine_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientMachineSource; v != nil {
+		builder.WriteString("client_machine_source=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientDeviceID; v != nil {
+		builder.WriteString("client_device_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientAccountUUID; v != nil {
+		builder.WriteString("client_account_uuid=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ClientOriginator; v != nil {
+		builder.WriteString("client_originator=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexInstallationID; v != nil {
+		builder.WriteString("codex_installation_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexWindowID; v != nil {
+		builder.WriteString("codex_window_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexSessionID; v != nil {
+		builder.WriteString("codex_session_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexThreadID; v != nil {
+		builder.WriteString("codex_thread_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.CodexTurnID; v != nil {
+		builder.WriteString("codex_turn_id=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.TerminalHash; v != nil {
+		builder.WriteString("terminal_hash=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
 	builder.WriteString("image_count=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageCount))
 	builder.WriteString(", ")
@@ -697,6 +930,19 @@ func (_m *UsageLog) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("image_size_breakdown=")
 	builder.WriteString(fmt.Sprintf("%v", _m.ImageSizeBreakdown))
+	builder.WriteString(", ")
+	builder.WriteString("video_count=")
+	builder.WriteString(fmt.Sprintf("%v", _m.VideoCount))
+	builder.WriteString(", ")
+	if v := _m.VideoResolution; v != nil {
+		builder.WriteString("video_resolution=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.VideoDurationSeconds; v != nil {
+		builder.WriteString("video_duration_seconds=")
+		builder.WriteString(fmt.Sprintf("%v", *v))
+	}
 	builder.WriteString(", ")
 	builder.WriteString("cache_ttl_overridden=")
 	builder.WriteString(fmt.Sprintf("%v", _m.CacheTTLOverridden))

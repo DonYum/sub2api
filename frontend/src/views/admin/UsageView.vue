@@ -64,78 +64,104 @@
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
       </div>
-      <UsageFilters v-model="filters" :mode="activeTab === 'errors' ? 'errors' : 'usage'" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
-        <template #after-reset>
-          <div class="relative" ref="columnDropdownRef">
-            <button
-              @click="showColumnDropdown = !showColumnDropdown"
-              class="btn btn-secondary px-2 md:px-3"
-              :title="t('admin.users.columnSettings')"
-            >
-              <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
-              </svg>
-              <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
-            </button>
-            <div
-              v-if="showColumnDropdown"
-              class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
-            >
+      <!-- 明细区：tab 栏 + 筛选 + 内容收进同一张卡片，消除割裂感 -->
+      <div class="card">
+        <div class="flex flex-wrap items-center border-b border-gray-200 px-2 dark:border-dark-700 sm:px-4">
+          <button
+            v-for="tab in detailTabs"
+            :key="tab.key"
+            type="button"
+            data-testid="usage-detail-tab"
+            class="-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-3 text-sm font-medium transition-colors sm:px-4"
+            :class="activeTab === tab.key
+              ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+              : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-dark-500 dark:hover:text-gray-200'"
+            @click="switchTab(tab.key)"
+          >
+            <Icon :name="tab.icon" size="sm" />
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
+          <template #after-reset>
+            <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
-                v-for="col in currentToggleableColumns"
-                :key="col.key"
-                @click="toggleCurrentColumn(col.key)"
-                class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                @click="showColumnDropdown = !showColumnDropdown"
+                class="btn btn-secondary px-2 md:px-3"
+                :title="t('admin.users.columnSettings')"
               >
-                <span>{{ col.label }}</span>
-                <Icon
-                  v-if="isCurrentColumnVisible(col.key)"
-                  name="check"
-                  size="sm"
-                  class="text-primary-500"
-                  :stroke-width="2"
-                />
+                <svg class="h-4 w-4 md:mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 4.5v15m6-15v15m-10.875 0h15.75c.621 0 1.125-.504 1.125-1.125V5.625c0-.621-.504-1.125-1.125-1.125H4.125C3.504 4.5 3 5.004 3 5.625v12.75c0 .621.504 1.125 1.125 1.125z" />
+                </svg>
+                <span class="hidden md:inline">{{ t('admin.users.columnSettings') }}</span>
               </button>
+              <div
+                v-if="showColumnDropdown"
+                class="absolute right-0 top-full z-50 mt-1 max-h-80 w-48 overflow-y-auto rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-dark-600 dark:bg-dark-800"
+              >
+                <button
+                  v-for="col in currentToggleableColumns"
+                  :key="col.key"
+                  @click="toggleCurrentColumn(col.key)"
+                  class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+                >
+                  <span>{{ col.label }}</span>
+                  <Icon
+                    v-if="isCurrentColumnVisible(col.key)"
+                    name="check"
+                    size="sm"
+                    class="text-primary-500"
+                    :stroke-width="2"
+                  />
+                </button>
+              </div>
             </div>
-          </div>
-        </template>
-      </UsageFilters>
-      <div class="mb-4 flex gap-2 border-b border-gray-200 dark:border-dark-700">
-        <button class="tab" :class="{ 'tab-active': activeTab === 'usage' }" @click="activeTab = 'usage'">
-          {{ t('usage.tabs.usage') }}
-        </button>
-        <button class="tab" :class="{ 'tab-active': activeTab === 'errors' }" @click="switchToErrorsTab">
-          {{ t('usage.tabs.errors') }}
-        </button>
+          </template>
+        </UsageFilters>
+
+        <div v-show="activeTab === 'usage'" class="overflow-hidden rounded-b-2xl">
+          <UsageTable
+            flat
+            :data="usageLogs"
+            :loading="loading"
+            :columns="visibleColumns"
+            :server-side-sort="true"
+            :default-sort-key="'created_at'"
+            :default-sort-order="'desc'"
+            @sort="handleSort"
+            @userClick="handleUserClick"
+            @ipGeoBatchFailed="handleIpGeoBatchFailed"
+          />
+          <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
+        </div>
+        <div v-show="activeTab === 'errors'" class="overflow-hidden rounded-b-2xl">
+          <OpsErrorLogTable
+            flat
+            :rows="errRows" :total="errTotal" :loading="errLoading"
+            :page="errPage" :page-size="errPageSize"
+            :visible-column-keys="errVisibleColumnKeys"
+            user-clickable
+            @userClick="handleUserClick"
+            @openErrorDetail="openError"
+            @sort="onErrSort"
+            @update:page="onErrPage"
+            @update:pageSize="onErrPageSize"
+            @ipGeoBatchFailed="handleIpGeoBatchFailed" />
+        </div>
+        <!-- 懒挂载：首次切到该 tab 才请求排行数据，之后随筛选自动刷新 -->
+        <div v-if="rankingMounted" v-show="activeTab === 'ranking'" class="overflow-hidden rounded-b-2xl">
+          <UserTokenRanking
+            ref="rankingRef"
+            :start-date="startDate"
+            :end-date="endDate"
+            :filters="breakdownFilters"
+            :model="filters.model"
+            @select-user="handleRankingSelectUser"
+          />
+        </div>
       </div>
-      <div v-show="activeTab === 'usage'">
-        <UsageTable
-          :data="usageLogs"
-          :loading="loading"
-          :columns="visibleColumns"
-          :server-side-sort="true"
-          :default-sort-key="'created_at'"
-          :default-sort-order="'desc'"
-          @sort="handleSort"
-          @userClick="handleUserClick"
-          @ipGeoBatchFailed="handleIpGeoBatchFailed"
-        />
-        <Pagination v-if="pagination.total > 0" :page="pagination.page" :total="pagination.total" :page-size="pagination.page_size" @update:page="handlePageChange" @update:pageSize="handlePageSizeChange" />
-      </div>
-      <div v-show="activeTab === 'errors'">
-        <OpsErrorLogTable
-          :rows="errRows" :total="errTotal" :loading="errLoading"
-          :page="errPage" :page-size="errPageSize"
-          :visible-column-keys="errVisibleColumnKeys"
-          user-clickable
-          @userClick="handleUserClick"
-          @openErrorDetail="openError"
-          @sort="onErrSort"
-          @update:page="onErrPage"
-          @update:pageSize="onErrPageSize"
-          @ipGeoBatchFailed="handleIpGeoBatchFailed" />
-        <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
-      </div>
+      <OpsErrorDetailModal v-model:show="showErrorModal" :error-id="selectedErrorId" :error-type="'request'" />
     </div>
   </AppLayout>
   <UsageExportProgress :show="exportProgress.show" :progress="exportProgress.progress" :current="exportProgress.current" :total="exportProgress.total" :estimated-time="exportProgress.estimatedTime" @cancel="cancelExport" />
@@ -167,6 +193,7 @@ import { resolveUsageRequestType, requestTypeToLegacyStream } from '@/utils/usag
 import AppLayout from '@/components/layout/AppLayout.vue'; import Pagination from '@/components/common/Pagination.vue'; import Select from '@/components/common/Select.vue'; import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; import UsageFilters from '@/components/admin/usage/UsageFilters.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
+import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'
 import UsageCleanupDialog from '@/components/admin/usage/UsageCleanupDialog.vue'
 import UserBalanceHistoryModal from '@/components/admin/user/UserBalanceHistoryModal.vue'
 import OpsErrorLogTable from '@/views/admin/ops/components/OpsErrorLogTable.vue'
@@ -218,6 +245,7 @@ const breakdownFilters = computed(() => {
   if (filters.value.group_id) f.group_id = filters.value.group_id
   if (filters.value.request_type != null) f.request_type = filters.value.request_type
   if (filters.value.billing_type != null) f.billing_type = filters.value.billing_type
+  if (filters.value.reasoning_effort) f.reasoning_effort = filters.value.reasoning_effort
   return f
 })
 
@@ -233,6 +261,15 @@ const handleUserClick = async (userId: number) => {
   } catch {
     appStore.showError(t('admin.usage.failedToLoadUser'))
   }
+}
+
+// Drill down from the per-user token ranking: scope the whole usage view to
+// that user and jump to the usage-detail tab so the drill-down is visible.
+const handleRankingSelectUser = (userId: number, email: string) => {
+  filters.value = { ...filters.value, user_id: userId }
+  usageFiltersRef.value?.setUserKeyword?.(email || '')
+  activeTab.value = 'usage'
+  applyFilters()
 }
 
 const granularityOptions = computed(() => [{ value: 'day', label: t('admin.dashboard.day') }, { value: 'hour', label: t('admin.dashboard.hour') }])
@@ -259,7 +296,7 @@ const getGranularityForRange = (start: string, end: string): 'day' | 'hour' => {
 }
 const defaultRange = getLast24HoursRangeDates()
 const startDate = ref(defaultRange.start); const endDate = ref(defaultRange.end)
-const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, start_date: startDate.value, end_date: endDate.value })
+const filters = ref<AdminUsageQueryParams>({ user_id: undefined, model: undefined, group_id: undefined, request_type: undefined, billing_type: null, reasoning_effort: undefined, start_date: startDate.value, end_date: endDate.value })
 const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total: 0 })
 const sortState = reactive({
   sort_by: 'created_at',
@@ -297,6 +334,26 @@ const applyRouteQueryFilters = () => {
     end_date: endDate.value
   }
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
+}
+
+const loadRouteUserFilterLabel = async () => {
+  const requestedUserId = filters.value.user_id
+  if (!requestedUserId) return
+  const userSearchRevision = usageFiltersRef.value?.getUserSearchRevision?.()
+
+  const routeUserFilterIsCurrent = () => (
+    filters.value.user_id === requestedUserId
+    && usageFiltersRef.value?.getUserSearchRevision?.() === userSearchRevision
+  )
+
+  try {
+    const user = await adminAPI.users.getById(requestedUserId, true)
+    if (!routeUserFilterIsCurrent()) return
+    usageFiltersRef.value?.setUserKeyword?.(user.email || String(requestedUserId))
+  } catch {
+    if (!routeUserFilterIsCurrent()) return
+    usageFiltersRef.value?.setUserKeyword?.(String(requestedUserId))
+  }
 }
 
 const onDateRangeChange = (range: { startDate: string; endDate: string; preset: string | null }) => {
@@ -394,6 +451,8 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
       request_type: requestType,
       stream: legacyStream === null ? undefined : legacyStream,
       billing_type: filters.value.billing_type,
+      reasoning_effort: filters.value.reasoning_effort,
+      upstream_model_mismatch: filters.value.upstream_model_mismatch,
     }
 
     const response = await adminAPI.dashboard.getModelStats({ ...baseParams, model_source: source })
@@ -443,6 +502,8 @@ const loadChartData = async () => {
       request_type: requestType,
       stream: legacyStream === null ? undefined : legacyStream,
       billing_type: filters.value.billing_type,
+      reasoning_effort: filters.value.reasoning_effort,
+      upstream_model_mismatch: filters.value.upstream_model_mismatch,
       include_stats: false,
       include_trend: true,
       include_model_stats: false,
@@ -475,12 +536,13 @@ const refreshData = () => {
   loadModelStats(modelDistributionSource.value, true)
   loadChartData()
   if (activeTab.value === 'errors') loadAdminErrors()
+  if (rankingMounted.value) rankingRef.value?.reload()
 }
 const resetFilters = () => {
   const range = getLast24HoursRangeDates()
   startDate.value = range.start
   endDate.value = range.end
-  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined }
+  filters.value = { start_date: startDate.value, end_date: endDate.value, request_type: undefined, billing_type: null, billing_mode: undefined, reasoning_effort: undefined }
   granularity.value = getGranularityForRange(startDate.value, endDate.value)
   applyFilters()
 }
@@ -501,6 +563,7 @@ const openCleanupDialog = () => { cleanupDialogVisible.value = true }
 const getRequestTypeLabel = (log: AdminUsageLog): string => {
   const requestType = resolveUsageRequestType(log)
   if (requestType === 'cyber') return t('usage.cyber')
+  if (requestType === 'live') return t('usage.live')
   if (requestType === 'ws_v2') return t('usage.ws')
   if (requestType === 'stream') return t('usage.stream')
   if (requestType === 'sync') return t('usage.sync')
@@ -515,7 +578,7 @@ const exportToExcel = async () => {
     const XLSX = await import('xlsx')
     const headers = [
       t('usage.time'), t('admin.usage.user'), t('usage.apiKeyFilter'),
-      t('admin.usage.account'), t('usage.model'), t('usage.upstreamModel'), t('usage.reasoningEffort'), t('admin.usage.group'),
+      t('admin.usage.account'), t('usage.requestedModel'), t('usage.sentUpstreamModel'), t('usage.upstreamResponseModel'), t('usage.upstreamModelMismatch'), t('usage.reasoningEffort'), t('admin.usage.group'),
       t('usage.inboundEndpoint'), t('usage.upstreamEndpoint'),
       t('usage.type'),
       t('admin.usage.inputTokens'), t('admin.usage.outputTokens'),
@@ -535,7 +598,7 @@ const exportToExcel = async () => {
       if (c.signal.aborted) break; if (p === 1) { total = res.total; exportProgress.total = total }
       const rows = (res.items || []).map((log: AdminUsageLog) => [
         log.created_at, log.user?.email || '', log.api_key?.name || '', log.account?.name || '', log.model,
-        log.upstream_model || '', formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
+        log.upstream_model || log.model, log.upstream_response_model || '', log.upstream_model_mismatch == null ? '' : t(log.upstream_model_mismatch ? 'common.yes' : 'common.no'), formatReasoningEffort(log.reasoning_effort), log.group?.name || '',
         log.inbound_endpoint || '', log.upstream_endpoint || '', getRequestTypeLabel(log),
         log.input_tokens, log.output_tokens, log.cache_read_tokens, log.cache_creation_tokens,
         log.input_cost?.toFixed(6) || '0.000000', log.output_cost?.toFixed(6) || '0.000000',
@@ -565,8 +628,10 @@ const exportToExcel = async () => {
 
 // Column visibility
 const ALWAYS_VISIBLE = ['user', 'created_at']
-const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'user_agent']
+const DEFAULT_HIDDEN_COLUMNS = ['reasoning_effort', 'request_id', 'user_agent']
 const HIDDEN_COLUMNS_KEY = 'usage-hidden-columns'
+const HIDDEN_COLUMNS_VERSION_KEY = 'usage-hidden-columns-version'
+const HIDDEN_COLUMNS_CURRENT_VERSION = 'request-id-hidden-by-default'
 
 const allColumns = computed(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false },
@@ -580,9 +645,9 @@ const allColumns = computed(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
-  { key: 'first_token', label: t('usage.firstToken'), sortable: false },
-  { key: 'duration', label: t('usage.duration'), sortable: false },
+  { key: 'latency', label: t('usage.latency'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
+  { key: 'request_id', label: t('admin.usage.requestId'), sortable: false },
   { key: 'user_agent', label: t('usage.userAgent'), sortable: false },
   { key: 'ip_address', label: t('admin.usage.ipAddress'), sortable: false }
 ])
@@ -609,6 +674,7 @@ const toggleColumn = (key: string) => {
   }
   try {
     localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+    localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
   } catch (e) {
     console.error('Failed to save columns:', e)
   }
@@ -689,10 +755,16 @@ const loadSavedColumns = () => {
       (JSON.parse(saved) as string[]).forEach((key) => {
         hiddenColumns.add(key)
       })
+      if (localStorage.getItem(HIDDEN_COLUMNS_VERSION_KEY) !== HIDDEN_COLUMNS_CURRENT_VERSION) {
+        hiddenColumns.add('request_id')
+        localStorage.setItem(HIDDEN_COLUMNS_KEY, JSON.stringify([...hiddenColumns]))
+        localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
+      }
     } else {
       DEFAULT_HIDDEN_COLUMNS.forEach((key) => {
         hiddenColumns.add(key)
       })
+      localStorage.setItem(HIDDEN_COLUMNS_VERSION_KEY, HIDDEN_COLUMNS_CURRENT_VERSION)
     }
   } catch {
     DEFAULT_HIDDEN_COLUMNS.forEach((key) => {
@@ -701,8 +773,25 @@ const loadSavedColumns = () => {
   }
 }
 
+// Detail tabs
+type DetailTab = 'usage' | 'errors' | 'ranking'
+const activeTab = ref<DetailTab>('usage')
+const detailTabs = computed(() => [
+  { key: 'usage' as const, label: t('usage.tabs.usage'), icon: 'document' as const },
+  { key: 'errors' as const, label: t('usage.tabs.errors'), icon: 'exclamationTriangle' as const },
+  { key: 'ranking' as const, label: t('usage.tabs.ranking'), icon: 'chart' as const },
+])
+const usageFiltersRef = ref<InstanceType<typeof UsageFilters> | null>(null)
+const rankingMounted = ref(false)
+const rankingRef = ref<InstanceType<typeof UserTokenRanking> | null>(null)
+
+const switchTab = (tab: DetailTab) => {
+  activeTab.value = tab
+  if (tab === 'errors' && errRows.value.length === 0) loadAdminErrors()
+  if (tab === 'ranking') rankingMounted.value = true
+}
+
 // Error tab state
-const activeTab = ref<'usage' | 'errors'>('usage')
 const errRows = ref<OpsErrorLog[]>([])
 const errLoading = ref(false)
 const errPage = ref(1)
@@ -756,7 +845,6 @@ const onErrSort = (sortBy: string, sortOrder: 'asc' | 'desc') => {
 const onErrPage = (p: number) => { errPage.value = p; loadAdminErrors() }
 const onErrPageSize = (s: number) => { errPageSize.value = s; errPage.value = 1; loadAdminErrors() }
 const openError = (id: number) => { selectedErrorId.value = id; showErrorModal.value = true }
-const switchToErrorsTab = () => { activeTab.value = 'errors'; if (errRows.value.length === 0) loadAdminErrors() }
 
 const showColumnDropdown = ref(false)
 const columnDropdownRef = ref<HTMLElement | null>(null)
@@ -769,6 +857,7 @@ const handleColumnClickOutside = (event: MouseEvent) => {
 
 onMounted(() => {
   applyRouteQueryFilters()
+  void loadRouteUserFilterLabel()
   loadLogs()
   loadStats()
   loadModelStats(modelDistributionSource.value, true)

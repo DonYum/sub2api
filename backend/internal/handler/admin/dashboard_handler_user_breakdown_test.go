@@ -59,7 +59,21 @@ func TestGetUserBreakdown_GroupIDFilter(t *testing.T) {
 	require.Equal(t, int64(42), repo.capturedDim.GroupID)
 	require.Empty(t, repo.capturedDim.Model)
 	require.Empty(t, repo.capturedDim.Endpoint)
-	require.Equal(t, 50, repo.capturedLimit) // default limit
+	require.Equal(t, 50, repo.capturedLimit)  // default limit
+	require.Empty(t, repo.capturedDim.SortBy) // no sort_by => empty (repo falls back to default)
+}
+
+func TestGetUserBreakdown_SortBy(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&sort_by=total_tokens", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "total_tokens", repo.capturedDim.SortBy)
 }
 
 func TestGetUserBreakdown_ModelFilter(t *testing.T) {
@@ -75,6 +89,19 @@ func TestGetUserBreakdown_ModelFilter(t *testing.T) {
 	require.Equal(t, "claude-opus-4-6", repo.capturedDim.Model)
 	require.Equal(t, usagestats.ModelSourceRequested, repo.capturedDim.ModelType)
 	require.Equal(t, int64(0), repo.capturedDim.GroupID)
+}
+
+func TestGetUserBreakdown_ReasoningEffortFilter(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&reasoning_effort=HIGH", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "high", repo.capturedDim.ReasoningEffort)
 }
 
 func TestGetUserBreakdown_ModelSourceFilter(t *testing.T) {
@@ -226,4 +253,43 @@ func TestGetUserBreakdown_NoFilters(t *testing.T) {
 	require.Equal(t, int64(0), repo.capturedDim.GroupID)
 	require.Empty(t, repo.capturedDim.Model)
 	require.Empty(t, repo.capturedDim.Endpoint)
+}
+
+func TestGetUserBreakdown_RequestTypeStringFilter(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		want  int16
+	}{
+		{"ws_v2", "ws_v2", int16(service.RequestTypeWSV2)},
+		{"stream", "stream", int16(service.RequestTypeStream)},
+		{"sync", "sync", int16(service.RequestTypeSync)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &userBreakdownRepoCapture{}
+			router := newUserBreakdownRouter(repo)
+
+			req := httptest.NewRequest(http.MethodGet,
+				"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type="+tc.value, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			require.NotNil(t, repo.capturedDim.RequestType, "request_type=%s should set filter", tc.value)
+			require.Equal(t, tc.want, *repo.capturedDim.RequestType)
+		})
+	}
+}
+
+func TestGetUserBreakdown_InvalidRequestType(t *testing.T) {
+	repo := &userBreakdownRepoCapture{}
+	router := newUserBreakdownRouter(repo)
+
+	req := httptest.NewRequest(http.MethodGet,
+		"/admin/dashboard/user-breakdown?start_date=2026-03-01&end_date=2026-03-16&request_type=bogus", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
 }
