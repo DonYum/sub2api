@@ -72,6 +72,7 @@ var usageLogInsertArgTypes = [...]string{
 	"integer",     // video_duration_seconds
 	"text",        // service_tier
 	"text",        // reasoning_effort
+	"text",        // requested_reasoning_effort
 	"text",        // inbound_endpoint
 	"text",        // upstream_endpoint
 	"boolean",     // cache_ttl_overridden
@@ -81,18 +82,9 @@ var usageLogInsertArgTypes = [...]string{
 	"text",        // billing_tier
 	"text",        // billing_mode
 	"numeric",     // account_stats_cost
+	"text",        // upstream_request_id
 	"text",        // session_id
-	"text",        // client_machine_id
-	"text",        // client_machine_source
-	"text",        // client_device_id
-	"text",        // client_account_uuid
-	"text",        // client_originator
-	"text",        // codex_installation_id
-	"text",        // codex_window_id
-	"text",        // codex_session_id
-	"text",        // codex_thread_id
-	"text",        // codex_turn_id
-	"text",        // terminal_hash
+	"boolean",     // native_compaction_v2
 	"timestamptz", // created_at
 }
 
@@ -281,6 +273,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
+			requested_reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
@@ -290,18 +283,9 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			upstream_request_id,
 			session_id,
-			client_machine_id,
-			client_machine_source,
-			client_device_id,
-			client_account_uuid,
-			client_originator,
-			codex_installation_id,
-			codex_window_id,
-			codex_session_id,
-			codex_thread_id,
-			codex_turn_id,
-			terminal_hash,
+			native_compaction_v2,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -309,9 +293,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
-			$41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55,
-			$56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
@@ -751,6 +733,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
+			requested_reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
@@ -760,24 +743,15 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			upstream_request_id,
 			session_id,
-			client_machine_id,
-			client_machine_source,
-			client_device_id,
-			client_account_uuid,
-			client_originator,
-			codex_installation_id,
-			codex_window_id,
-			codex_session_id,
-			codex_thread_id,
-			codex_turn_id,
-			terminal_hash,
+			native_compaction_v2,
 			created_at
 		) AS (VALUES `)
 
-	// Each batch row prepends the synthetic input_index before the usage-log
-	// column values.
-	args := make([]any, 0, len(keys)*(len(usageLogInsertArgTypes)+1))
+	// Each batch row prepends the synthetic input_index before the 60
+	// usage-log column values.
+	args := make([]any, 0, len(keys)*61)
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -854,6 +828,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				video_duration_seconds,
 				service_tier,
 				reasoning_effort,
+				requested_reasoning_effort,
 				inbound_endpoint,
 				upstream_endpoint,
 				cache_ttl_overridden,
@@ -863,18 +838,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_tier,
 				billing_mode,
 				account_stats_cost,
+				upstream_request_id,
 				session_id,
-				client_machine_id,
-				client_machine_source,
-				client_device_id,
-				client_account_uuid,
-				client_originator,
-				codex_installation_id,
-				codex_window_id,
-				codex_session_id,
-				codex_thread_id,
-				codex_turn_id,
-				terminal_hash,
+				native_compaction_v2,
 				created_at
 			)
 			SELECT
@@ -926,6 +892,7 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				video_duration_seconds,
 				service_tier,
 				reasoning_effort,
+				requested_reasoning_effort,
 				inbound_endpoint,
 				upstream_endpoint,
 				cache_ttl_overridden,
@@ -935,18 +902,9 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				billing_tier,
 				billing_mode,
 				account_stats_cost,
+				upstream_request_id,
 				session_id,
-				client_machine_id,
-				client_machine_source,
-				client_device_id,
-				client_account_uuid,
-				client_originator,
-				codex_installation_id,
-				codex_window_id,
-				codex_session_id,
-				codex_thread_id,
-				codex_turn_id,
-				terminal_hash,
+				native_compaction_v2,
 				created_at
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1038,6 +996,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
+			requested_reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
@@ -1047,22 +1006,13 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			upstream_request_id,
 			session_id,
-			client_machine_id,
-			client_machine_source,
-			client_device_id,
-			client_account_uuid,
-			client_originator,
-			codex_installation_id,
-			codex_window_id,
-			codex_session_id,
-			codex_thread_id,
-			codex_turn_id,
-			terminal_hash,
+			native_compaction_v2,
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
+	args := make([]any, 0, len(preparedList)*60)
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1136,6 +1086,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
+			requested_reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
@@ -1145,18 +1096,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			upstream_request_id,
 			session_id,
-			client_machine_id,
-			client_machine_source,
-			client_device_id,
-			client_account_uuid,
-			client_originator,
-			codex_installation_id,
-			codex_window_id,
-			codex_session_id,
-			codex_thread_id,
-			codex_turn_id,
-			terminal_hash,
+			native_compaction_v2,
 			created_at
 		)
 		SELECT
@@ -1208,6 +1150,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
+			requested_reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
@@ -1217,18 +1160,9 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			upstream_request_id,
 			session_id,
-			client_machine_id,
-			client_machine_source,
-			client_device_id,
-			client_account_uuid,
-			client_originator,
-			codex_installation_id,
-			codex_window_id,
-			codex_session_id,
-			codex_thread_id,
-			codex_turn_id,
-			terminal_hash,
+			native_compaction_v2,
 			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1288,6 +1222,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			video_duration_seconds,
 			service_tier,
 			reasoning_effort,
+			requested_reasoning_effort,
 			inbound_endpoint,
 			upstream_endpoint,
 			cache_ttl_overridden,
@@ -1297,18 +1232,9 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			billing_tier,
 			billing_mode,
 			account_stats_cost,
+			upstream_request_id,
 			session_id,
-			client_machine_id,
-			client_machine_source,
-			client_device_id,
-			client_account_uuid,
-			client_originator,
-			codex_installation_id,
-			codex_window_id,
-			codex_session_id,
-			codex_thread_id,
-			codex_turn_id,
-			terminal_hash,
+			native_compaction_v2,
 			created_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -1316,9 +1242,7 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			$12, $13, $14, $15,
 			$16, $17, $18, $19,
 			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40,
-			$41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55,
-			$56, $57, $58, $59, $60, $61, $62, $63, $64, $65, $66, $67, $68, $69, $70
+			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62
 		)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 	`, prepared.args...)
@@ -1353,24 +1277,15 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	videoDurationSeconds := nullInt(log.VideoDurationSeconds)
 	serviceTier := nullString(log.ServiceTier)
 	reasoningEffort := nullString(log.ReasoningEffort)
+	requestedReasoningEffort := nullString(log.RequestedReasoningEffort)
 	inboundEndpoint := nullString(log.InboundEndpoint)
 	upstreamEndpoint := nullString(log.UpstreamEndpoint)
 	channelID := nullInt64(log.ChannelID)
 	modelMappingChain := nullString(log.ModelMappingChain)
 	billingTier := nullString(log.BillingTier)
 	billingMode := nullString(log.BillingMode)
+	upstreamRequestID := nullString(log.UpstreamRequestID)
 	sessionID := nullString(log.SessionID)
-	clientMachineID := nullString(log.ClientMachineID)
-	clientMachineSource := nullString(log.ClientMachineSource)
-	clientDeviceID := nullString(log.ClientDeviceID)
-	clientAccountUUID := nullString(log.ClientAccountUUID)
-	clientOriginator := nullString(log.ClientOriginator)
-	codexInstallationID := nullString(log.CodexInstallationID)
-	codexWindowID := nullString(log.CodexWindowID)
-	codexSessionID := nullString(log.CodexSessionID)
-	codexThreadID := nullString(log.CodexThreadID)
-	codexTurnID := nullString(log.CodexTurnID)
-	terminalHash := nullString(log.TerminalHash)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1438,6 +1353,7 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			videoDurationSeconds,
 			serviceTier,
 			reasoningEffort,
+			requestedReasoningEffort,
 			inboundEndpoint,
 			upstreamEndpoint,
 			log.CacheTTLOverridden,
@@ -1447,18 +1363,9 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			billingTier,
 			billingMode,
 			log.AccountStatsCost, // account_stats_cost
+			upstreamRequestID,    // upstream_request_id
 			sessionID,            // session_id
-			clientMachineID,      // client_machine_id
-			clientMachineSource,  // client_machine_source
-			clientDeviceID,       // client_device_id
-			clientAccountUUID,    // client_account_uuid
-			clientOriginator,     // client_originator
-			codexInstallationID,  // codex_installation_id
-			codexWindowID,        // codex_window_id
-			codexSessionID,       // codex_session_id
-			codexThreadID,        // codex_thread_id
-			codexTurnID,          // codex_turn_id
-			terminalHash,         // terminal_hash
+			log.NativeCompactionV2,
 			createdAt,
 		},
 	}

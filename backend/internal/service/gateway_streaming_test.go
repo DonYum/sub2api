@@ -4,7 +4,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -83,55 +82,19 @@ func TestParseSSEUsage_DeltaOverwritesWithNonZero(t *testing.T) {
 	require.Equal(t, 60, usage.CacheReadInputTokens)
 }
 
-func TestParseSSEUsage_DeltaDoesNotResetCacheCreationBreakdown(t *testing.T) {
+func TestParseSSEUsage_DeltaAuthoritativelyUpdatesCacheCreationBreakdown(t *testing.T) {
 	svc := newMinimalGatewayService()
 	usage := &ClaudeUsage{}
 
-	// 先在 message_start 中写入非零 5m/1h 明细
-	svc.parseSSEUsage(`{"type":"message_start","message":{"usage":{"input_tokens":100,"cache_creation":{"ephemeral_5m_input_tokens":30,"ephemeral_1h_input_tokens":70}}}}`, usage)
-	require.Equal(t, 100, usage.CacheCreationInputTokens, "5m/1h 明细应回填聚合 cache_creation_input_tokens")
-	require.Equal(t, 30, usage.CacheCreation5mTokens)
-	require.Equal(t, 70, usage.CacheCreation1hTokens)
+	svc.parseSSEUsage(`{"type":"message_start","message":{"usage":{"cache_creation_input_tokens":463184,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":463184}}}}`, usage)
+	require.Equal(t, 463184, usage.CacheCreationInputTokens)
+	require.Equal(t, 0, usage.CacheCreation5mTokens)
+	require.Equal(t, 463184, usage.CacheCreation1hTokens)
 
-	// 后续 delta 带默认 0，不应覆盖已有非零值
-	svc.parseSSEUsage(`{"type":"message_delta","usage":{"output_tokens":12,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":0}}}`, usage)
-	require.Equal(t, 100, usage.CacheCreationInputTokens, "delta 的 0 值不应重置聚合 cache_creation_input_tokens")
-	require.Equal(t, 30, usage.CacheCreation5mTokens, "delta 的 0 值不应重置 5m 明细")
-	require.Equal(t, 70, usage.CacheCreation1hTokens, "delta 的 0 值不应重置 1h 明细")
-	require.Equal(t, 12, usage.OutputTokens)
-}
-
-func TestAnthropicStreamUsageObservationCountsUsageMetadata(t *testing.T) {
-	obs := newAnthropicStreamUsageObservation(
-		&Account{ID: 17, Platform: PlatformAnthropic},
-		"claude-opus-5",
-		"claude-opus-5",
-		false,
-	)
-
-	observeAnthropicStreamUsageEvent(t, obs, `{"type":"message_start","message":{"usage":{"input_tokens":10,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cached_tokens":7,"cache_creation":{"ephemeral_5m_input_tokens":3,"ephemeral_1h_input_tokens":4}}}}`)
-	observeAnthropicStreamUsageEvent(t, obs, `{"type":"message_delta","usage":{"output_tokens":5}}`)
-	observeAnthropicStreamUsageEvent(t, obs, `{"type":"content_block_delta","delta":{"type":"text_delta","text":"sensitive text is ignored"}}`)
-
-	require.Equal(t, PlatformAnthropic, obs.Platform)
-	require.Equal(t, int64(17), obs.AccountID)
-	require.Equal(t, 3, obs.ParsedJSONEvents)
-	require.Equal(t, 2, obs.UsageEvents)
-	require.Equal(t, 1, obs.MessageStartUsageEvents)
-	require.Equal(t, 1, obs.MessageDeltaUsageEvents)
-	require.Equal(t, 2, obs.StandardCacheFieldEvents)
-	require.Equal(t, 1, obs.CachedTokensEvents)
-	require.Equal(t, 1, obs.CacheCreationBreakdownEvents)
-	require.Equal(t, 0, obs.PositiveStandardCacheFieldEvents)
-	require.Equal(t, 1, obs.PositiveCachedTokensEvents)
-	require.Equal(t, 1, obs.PositiveCacheBreakdownEvents)
-}
-
-func observeAnthropicStreamUsageEvent(t *testing.T, obs *anthropicStreamUsageObservation, raw string) {
-	t.Helper()
-	var event map[string]any
-	require.NoError(t, json.Unmarshal([]byte(raw), &event))
-	obs.observeEvent(event)
+	svc.parseSSEUsage(`{"type":"message_delta","usage":{"cache_creation_input_tokens":463184,"cache_creation":{"ephemeral_5m_input_tokens":463184,"ephemeral_1h_input_tokens":0}}}`, usage)
+	require.Equal(t, 463184, usage.CacheCreationInputTokens)
+	require.Equal(t, 463184, usage.CacheCreation5mTokens)
+	require.Equal(t, 0, usage.CacheCreation1hTokens)
 }
 
 func TestParseSSEUsage_InvalidJSON(t *testing.T) {

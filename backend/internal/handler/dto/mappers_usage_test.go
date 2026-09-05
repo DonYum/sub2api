@@ -28,6 +28,27 @@ func TestUsageLogFromService_IncludesOpenAIWSMode(t *testing.T) {
 	require.False(t, UsageLogFromServiceAdmin(httpLog).OpenAIWSMode)
 }
 
+func TestUsageLogFromService_PreservesNativeCompactionAndStream(t *testing.T) {
+	t.Parallel()
+
+	log := &service.UsageLog{
+		RequestID:          "resp_compaction",
+		Model:              "gpt-5.6-sol",
+		RequestType:        service.RequestTypeStream,
+		Stream:             true,
+		NativeCompactionV2: true,
+	}
+
+	userDTO := UsageLogFromService(log)
+	adminDTO := UsageLogFromServiceAdmin(log)
+	require.Equal(t, "stream", userDTO.RequestType)
+	require.True(t, userDTO.Stream)
+	require.True(t, userDTO.NativeCompactionV2)
+	require.Equal(t, "stream", adminDTO.RequestType)
+	require.True(t, adminDTO.Stream)
+	require.True(t, adminDTO.NativeCompactionV2)
+}
+
 func TestUsageLogFromService_PrefersRequestTypeForLegacyFields(t *testing.T) {
 	t.Parallel()
 
@@ -179,68 +200,59 @@ func TestUsageLogFromService_KeepsUserBillingAndIPWithoutAdminCostFields(t *test
 	require.NotContains(t, string(userJSON), "account_cost")
 }
 
-func TestUsageLogFromService_IncludesCodingAgentMetadataForUserAndAdmin(t *testing.T) {
+func TestUsageLogFromService_UsersSeeRequestedReasoningEffortOnly(t *testing.T) {
 	t.Parallel()
 
-	clientMachineID := "macbook-yf"
-	clientMachineSource := "x_client_machine"
-	clientDeviceID := "device-1"
-	clientAccountUUID := "account-uuid-1"
-	clientOriginator := "codex_cli_rs"
-	codexInstallationID := "install-1"
-	codexWindowID := "window-1"
-	codexSessionID := "session-1"
-	codexThreadID := "thread-1"
-	codexTurnID := "turn-1"
-	terminalHash := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	requested := "max"
+	forwarded := "xhigh"
 	log := &service.UsageLog{
-		RequestID:             "req_coding_agent_metadata",
-		Model:                 "gpt-5.6-sol",
-		ClientMachineID:       &clientMachineID,
-		ClientMachineSource:   &clientMachineSource,
-		ClientDeviceID:        &clientDeviceID,
-		ClientAccountUUID:     &clientAccountUUID,
-		ClientOriginator:      &clientOriginator,
-		CodexInstallationID:   &codexInstallationID,
-		CodexWindowID:         &codexWindowID,
-		CodexSessionID:        &codexSessionID,
-		CodexThreadID:         &codexThreadID,
-		CodexTurnID:           &codexTurnID,
-		TerminalHash:          &terminalHash,
-		AccountRateMultiplier: f64Ptr(1.5),
+		RequestID:                "req_effort",
+		Model:                    "gpt-5.4",
+		ReasoningEffort:          &forwarded,
+		RequestedReasoningEffort: &requested,
 	}
 
 	userDTO := UsageLogFromService(log)
 	adminDTO := UsageLogFromServiceAdmin(log)
 
-	for _, got := range []*UsageLog{userDTO, &adminDTO.UsageLog} {
-		require.Equal(t, &clientMachineID, got.ClientMachineID)
-		require.Equal(t, &clientMachineSource, got.ClientMachineSource)
-		require.Equal(t, &clientDeviceID, got.ClientDeviceID)
-		require.Equal(t, &clientAccountUUID, got.ClientAccountUUID)
-		require.Equal(t, &clientOriginator, got.ClientOriginator)
-		require.Equal(t, &codexInstallationID, got.CodexInstallationID)
-		require.Equal(t, &codexWindowID, got.CodexWindowID)
-		require.Equal(t, &codexSessionID, got.CodexSessionID)
-		require.Equal(t, &codexThreadID, got.CodexThreadID)
-		require.Equal(t, &codexTurnID, got.CodexTurnID)
-		require.Equal(t, &terminalHash, got.TerminalHash)
-	}
+	require.NotNil(t, userDTO.ReasoningEffort)
+	require.Equal(t, requested, *userDTO.ReasoningEffort)
+	require.NotNil(t, adminDTO.ReasoningEffort)
+	require.Equal(t, requested, *adminDTO.ReasoningEffort)
+	require.NotNil(t, adminDTO.UpstreamReasoningEffort)
+	require.Equal(t, forwarded, *adminDTO.UpstreamReasoningEffort)
 
 	userJSON, err := json.Marshal(userDTO)
 	require.NoError(t, err)
-	require.Contains(t, string(userJSON), `"client_machine_id":"macbook-yf"`)
-	require.Contains(t, string(userJSON), `"client_machine_source":"x_client_machine"`)
-	require.Contains(t, string(userJSON), `"client_device_id":"device-1"`)
-	require.Contains(t, string(userJSON), `"client_account_uuid":"account-uuid-1"`)
-	require.Contains(t, string(userJSON), `"client_originator":"codex_cli_rs"`)
-	require.Contains(t, string(userJSON), `"codex_installation_id":"install-1"`)
-	require.Contains(t, string(userJSON), `"codex_window_id":"window-1"`)
-	require.Contains(t, string(userJSON), `"codex_session_id":"session-1"`)
-	require.Contains(t, string(userJSON), `"codex_thread_id":"thread-1"`)
-	require.Contains(t, string(userJSON), `"codex_turn_id":"turn-1"`)
-	require.Contains(t, string(userJSON), `"terminal_hash":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"`)
-	require.NotContains(t, string(userJSON), "account_rate_multiplier")
+	require.Contains(t, string(userJSON), `"reasoning_effort":"max"`)
+	require.NotContains(t, string(userJSON), "upstream_reasoning_effort")
+	require.NotContains(t, string(userJSON), "requested_reasoning_effort")
+
+	adminJSON, err := json.Marshal(adminDTO)
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"reasoning_effort":"max"`)
+	require.Contains(t, string(adminJSON), `"upstream_reasoning_effort":"xhigh"`)
+}
+
+func TestUsageLogFromService_OmitsUpstreamReasoningEffortWhenUnmapped(t *testing.T) {
+	t.Parallel()
+
+	effort := "high"
+	log := &service.UsageLog{
+		RequestID:                "req_effort_same",
+		Model:                    "gpt-5.4",
+		ReasoningEffort:          &effort,
+		RequestedReasoningEffort: &effort,
+	}
+
+	adminDTO := UsageLogFromServiceAdmin(log)
+	require.NotNil(t, adminDTO.ReasoningEffort)
+	require.Equal(t, effort, *adminDTO.ReasoningEffort)
+	require.Nil(t, adminDTO.UpstreamReasoningEffort)
+
+	adminJSON, err := json.Marshal(adminDTO)
+	require.NoError(t, err)
+	require.NotContains(t, string(adminJSON), "upstream_reasoning_effort")
 }
 
 func TestUsageLogFromService_FallsBackToLegacyModelWhenRequestedModelMissing(t *testing.T) {

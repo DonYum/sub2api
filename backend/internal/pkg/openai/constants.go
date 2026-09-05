@@ -22,7 +22,8 @@ var DefaultModels = []Model{
 	{ID: "gpt-5.6", Object: "model", Created: 1780876800, OwnedBy: "openai", Type: "model", DisplayName: "GPT-5.6 (Sol)"},
 	{ID: "gpt-5.6-terra", Object: "model", Created: 1780876800, OwnedBy: "openai", Type: "model", DisplayName: "GPT-5.6 Terra"},
 	{ID: "gpt-5.6-luna", Object: "model", Created: 1780876800, OwnedBy: "openai", Type: "model", DisplayName: "GPT-5.6 Luna"},
-	{ID: "gpt-6", Object: "model", Created: 1788566400, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6"},
+	{ID: "gpt-6", Object: "model", Created: 1788566400, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6 (Astra)"},
+	{ID: "gpt-6-astra", Object: "model", Created: 1788480000, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6 Astra"},
 	{ID: "gpt-6-luna", Object: "model", Created: 1788566400, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6 Luna"},
 	{ID: "gpt-6-sol", Object: "model", Created: 1788566400, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6 Sol"},
 	{ID: "gpt-6-terra", Object: "model", Created: 1788566400, OwnedBy: "openai", Type: "model", DisplayName: "GPT-6 Terra"},
@@ -48,6 +49,9 @@ func DefaultModelIDs() []string {
 
 // DefaultTestModel default model for testing OpenAI accounts
 const DefaultTestModel = "gpt-5.4"
+
+// CodexUsageProbeModel is the model used for OAuth Codex usage probes.
+const CodexUsageProbeModel = "codex-auto-review"
 
 // DefaultInstructions default instructions for non-Codex CLI requests.
 // 内容为真实 Codex CLI 的 GPT-5-Codex base prompt（codex 系模型默认）。
