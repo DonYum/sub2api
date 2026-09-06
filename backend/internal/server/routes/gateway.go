@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/appmetrics"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -502,6 +503,16 @@ func RegisterGatewayRoutes(
 		antigravityV1Beta.POST("/models/*modelAction", h.Gateway.GeminiV1BetaModels)
 	}
 
+}
+
+// trackGatewayInFlight 维护 sub2api_inflight_requests gauge。
+// 注意它必须排在 apiKeyAuth 之后（否则 platform 标签取不到），且排在
+// compositeTarget 之前 —— composite 组的真实平台在请求处理中才解析，
+// gauge 只需要一个有界标签。
+func trackGatewayInFlight(c *gin.Context) {
+	done := appmetrics.BeginInFlight(getGroupPlatform(c))
+	defer done()
+	c.Next()
 }
 
 func dispatchCodexModelsGateway(c *gin.Context, openAIHandler, generatedHandler gin.HandlerFunc) {

@@ -249,6 +249,48 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 	isChannelRestricted := func(account *Account) bool {
 		return needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
 	}
+	hasHigherPriorityLoadAwareCandidate := func(sticky *Account) bool {
+		if sticky == nil {
+			return false
+		}
+		for i := range accounts {
+			acc := &accounts[i]
+			if acc.ID == sticky.ID || isExcluded(acc.ID) {
+				continue
+			}
+			if !s.isAccountSchedulableForSelection(acc) {
+				continue
+			}
+			if !s.isGatewayAccountProfitEligible(ctx, acc) {
+				continue
+			}
+			if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+				continue
+			}
+			if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+				continue
+			}
+			if isChannelRestricted(acc) {
+				continue
+			}
+			if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+				continue
+			}
+			if !s.isAccountSchedulableForQuota(acc) {
+				continue
+			}
+			if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+				continue
+			}
+			if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+				continue
+			}
+			if acc.Priority < sticky.Priority {
+				return true
+			}
+		}
+		return false
+	}
 
 	// 获取模型路由配置（anthropic 目标平台；composite 分组按目标平台判断）
 	var routingAccountIDs []int64
@@ -352,78 +394,80 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				if containsInt64(routingAccountIDs, stickyAccountID) && !isExcluded(stickyAccountID) {
 					// 粘性账号在路由列表中，优先使用
 					if stickyAccount, ok := accountByID[stickyAccountID]; ok {
-						var stickyCacheMissReason string
+						if !hasHigherPriorityGatewayCandidate(routingCandidates, stickyAccount) {
+							var stickyCacheMissReason string
 
-						gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
-							s.isGatewayAccountProfitEligible(ctx, stickyAccount) &&
-							s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
-							(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
-							!isChannelRestricted(stickyAccount) &&
-							s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
-							s.isAccountSchedulableForQuota(stickyAccount) &&
-							s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
+							gatePass := s.isAccountSchedulableForSelection(stickyAccount) &&
+								s.isGatewayAccountProfitEligible(ctx, stickyAccount) &&
+								s.isAccountAllowedForPlatform(stickyAccount, platform, useMixed) &&
+								(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, stickyAccount, requestedModel)) &&
+								!isChannelRestricted(stickyAccount) &&
+								s.isAccountSchedulableForModelSelection(ctx, stickyAccount, requestedModel) &&
+								s.isAccountSchedulableForQuota(stickyAccount) &&
+								s.isAccountSchedulableForWindowCost(ctx, stickyAccount, true)
 
-						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
+							rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
 
-						if rpmPass { // 粘性会话窗口费用+RPM 检查
-							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
-							if err == nil && result.Acquired {
-								// 会话数量限制检查
-								if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
-									result.ReleaseFunc() // 释放槽位
-									stickyCacheMissReason = "session_limit"
-									// 继续到负载感知选择
-								} else {
-									slog.Debug("sticky.layer1_5_hit",
-										"account_id", stickyAccountID,
-										"session", shortSessionHash(sessionHash),
-										"result", "slot_acquired",
-									)
-									if s.debugModelRoutingEnabled() {
-										logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
-									}
-									return s.newSelectionResult(ctx, stickyAccount, true, result.ReleaseFunc, nil)
-								}
-							}
-
-							if stickyCacheMissReason == "" {
-								waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
-								if waitingCount < cfg.StickySessionMaxWaiting {
-									// 会话数量限制检查（等待计划也需要占用会话配额）
+							if rpmPass { // 粘性会话窗口费用+RPM 检查
+								result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
+								if err == nil && result.Acquired {
+									// 会话数量限制检查
 									if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
+										result.ReleaseFunc() // 释放槽位
 										stickyCacheMissReason = "session_limit"
-										// 会话限制已满，继续到负载感知选择
+										// 继续到负载感知选择
 									} else {
-										// 必须走 newSelectionResult 以 hydrate 账号凭证：
-										// 调度快照中的账号是精简版（OAuth token 等被剥离），
-										// 直接返回会导致后续转发缺少凭证而鉴权失败。
-										return s.newSelectionResult(ctx, stickyAccount, false, nil, &AccountWaitPlan{
-											AccountID:      stickyAccountID,
-											MaxConcurrency: stickyAccount.Concurrency,
-											Timeout:        cfg.StickySessionWaitTimeout,
-											MaxWaiting:     cfg.StickySessionMaxWaiting,
-										})
+										slog.Debug("sticky.layer1_5_hit",
+											"account_id", stickyAccountID,
+											"session", shortSessionHash(sessionHash),
+											"result", "slot_acquired",
+										)
+										if s.debugModelRoutingEnabled() {
+											logger.LegacyPrintf("service.gateway", "[ModelRoutingDebug] routed sticky hit: group_id=%v model=%s session=%s account=%d", derefGroupID(groupID), requestedModel, shortSessionHash(sessionHash), stickyAccountID)
+										}
+										return s.newSelectionResult(ctx, stickyAccount, true, result.ReleaseFunc, nil)
 									}
-								} else {
-									stickyCacheMissReason = "wait_queue_full"
 								}
-							}
-							// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
-						} else if !gatePass {
-							stickyCacheMissReason = "gate_check"
-						} else {
-							stickyCacheMissReason = "rpm_red"
-						}
 
-						// 记录粘性缓存未命中的结构化日志
-						if stickyCacheMissReason != "" {
-							baseRPM := stickyAccount.GetBaseRPM()
-							var currentRPM int
-							if count, ok := rpmFromPrefetchContext(ctx, stickyAccount.ID); ok {
-								currentRPM = count
+								if stickyCacheMissReason == "" {
+									waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, stickyAccountID)
+									if waitingCount < cfg.StickySessionMaxWaiting {
+										// 会话数量限制检查（等待计划也需要占用会话配额）
+										if !s.checkAndRegisterSession(ctx, stickyAccount, sessionHash) {
+											stickyCacheMissReason = "session_limit"
+											// 会话限制已满，继续到负载感知选择
+										} else {
+											// 必须走 newSelectionResult 以 hydrate 账号凭证：
+											// 调度快照中的账号是精简版（OAuth token 等被剥离），
+											// 直接返回会导致后续转发缺少凭证而鉴权失败。
+											return s.newSelectionResult(ctx, stickyAccount, false, nil, &AccountWaitPlan{
+												AccountID:      stickyAccountID,
+												MaxConcurrency: stickyAccount.Concurrency,
+												Timeout:        cfg.StickySessionWaitTimeout,
+												MaxWaiting:     cfg.StickySessionMaxWaiting,
+											})
+										}
+									} else {
+										stickyCacheMissReason = "wait_queue_full"
+									}
+								}
+								// 粘性账号槽位满且等待队列已满，继续使用负载感知选择
+							} else if !gatePass {
+								stickyCacheMissReason = "gate_check"
+							} else {
+								stickyCacheMissReason = "rpm_red"
 							}
-							logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=%s account_id=%d session=%s current_rpm=%d base_rpm=%d",
-								stickyCacheMissReason, stickyAccountID, shortSessionHash(sessionHash), currentRPM, baseRPM)
+
+							// 记录粘性缓存未命中的结构化日志
+							if stickyCacheMissReason != "" {
+								baseRPM := stickyAccount.GetBaseRPM()
+								var currentRPM int
+								if count, ok := rpmFromPrefetchContext(ctx, stickyAccount.ID); ok {
+									currentRPM = count
+								}
+								logger.LegacyPrintf("service.gateway", "[StickyCacheMiss] reason=%s account_id=%d session=%s current_rpm=%d base_rpm=%d",
+									stickyCacheMissReason, stickyAccountID, shortSessionHash(sessionHash), currentRPM, baseRPM)
+							}
 						}
 					} else {
 						_ = s.cache.DeleteSessionAccountID(ctx, derefGroupID(groupID), sessionHash)
@@ -431,6 +475,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 							stickyAccountID, shortSessionHash(sessionHash))
 					}
 				}
+
 			}
 
 			// 2. 批量获取负载信息
@@ -565,7 +610,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"rpm_ok", rpmOK,
 				)
 
-				if !clearSticky && platformOK && profitOK && modelSupported && channelOK && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
+				if !clearSticky && !hasHigherPriorityLoadAwareCandidate(account) && platformOK && profitOK && modelSupported && channelOK && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
