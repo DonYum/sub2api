@@ -528,12 +528,6 @@ func getGroupPlatform(c *gin.Context) string {
 	return apiKey.Group.Platform
 }
 
-func trackGatewayInFlight(c *gin.Context) {
-	done := appmetrics.BeginInFlight(getGroupPlatform(c))
-	defer done()
-	c.Next()
-}
-
 func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {
 	if resolver == nil {
 		resolver = service.NewCompositeRouteResolver(nil)
