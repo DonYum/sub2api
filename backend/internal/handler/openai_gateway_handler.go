@@ -240,6 +240,95 @@ func newOpenAIModelMappedBodyCache(body []byte, replace openAIModelBodyReplaceFu
 	}
 }
 
+func logOpenAICapacityBreakerDecision(reqLog *zap.Logger, message string, accountID int64, decision *service.OpenAICapacityBreakerDecision) {
+	if reqLog == nil {
+		return
+	}
+	fields := []zap.Field{zap.Int64("account_id", accountID)}
+	if decision != nil {
+		fields = append(fields,
+			zap.Bool("breaker_applied", decision.Applied),
+			zap.Bool("breaker_permanent", decision.Permanent),
+			zap.Int("breaker_level", decision.Level),
+			zap.String("breaker_skipped_reason", decision.SkippedReason),
+			zap.Int("remaining_peer_count", decision.RemainingPeerCount),
+		)
+		if decision.Until != nil {
+			fields = append(fields, zap.Time("breaker_until", *decision.Until))
+		}
+	}
+	reqLog.Warn(message, fields...)
+}
+
+func openAICapacityShedRescueAllowed(decision *service.OpenAICapacityBreakerDecision, rescueUsed bool, switchCount int, maxAccountSwitches int) bool {
+	return decision != nil && decision.Applied && !rescueUsed && maxAccountSwitches > 0 && switchCount < maxAccountSwitches
+}
+
+func logOpenAICapacityShedRescue(reqLog *zap.Logger, message string, accountID int64, switchCount int, maxAccountSwitches int) {
+	if reqLog == nil {
+		return
+	}
+	reqLog.Warn(message,
+		zap.Int64("account_id", accountID),
+		zap.Int("switch_count", switchCount),
+		zap.Int("max_switches", maxAccountSwitches),
+	)
+}
+
+func openAIResponsesToolsRequireNativeRouting(tools gjson.Result) bool {
+	if !tools.IsArray() {
+		return false
+	}
+	for _, tool := range tools.Array() {
+		switch strings.TrimSpace(tool.Get("type").String()) {
+		case "namespace", "local_shell":
+			return true
+		}
+	}
+	return false
+}
+
+func openAIResponsesBodyRequiresNativeRouting(body []byte) bool {
+	if openAIResponsesToolsRequireNativeRouting(gjson.GetBytes(body, "tools")) {
+		return true
+	}
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return false
+	}
+	for _, item := range input.Array() {
+		itemType := strings.TrimSpace(item.Get("type").String())
+		if itemType == "additional_tools" {
+			return true
+		}
+		if strings.Contains(itemType, "function_call") && strings.TrimSpace(item.Get("namespace").String()) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func shouldStopOpenAIHTTPFailoverAtLowerPriority(priorityFloor *int, account *service.Account) bool {
+	return priorityFloor != nil && account != nil && account.Priority > *priorityFloor
+}
+
+func updateOpenAIFailoverPriorityFloor(priorityFloor *int, failedAccount *service.Account) *int {
+	if failedAccount == nil {
+		return priorityFloor
+	}
+	if priorityFloor == nil || failedAccount.Priority < *priorityFloor {
+		priority := failedAccount.Priority
+		return &priority
+	}
+	return priorityFloor
+}
+
+func releaseOpenAISelectionIfAcquired(selection *service.AccountSelectionResult) {
+	if selection != nil && selection.Acquired && selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+}
+
 func usageRecordContext(parent context.Context, base context.Context) context.Context {
 	if base == nil {
 		base = context.Background()

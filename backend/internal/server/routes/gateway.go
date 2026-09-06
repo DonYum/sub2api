@@ -514,6 +514,16 @@ func dispatchCodexModelsGateway(c *gin.Context, openAIHandler, generatedHandler 
 	generatedHandler(c)
 }
 
+// trackGatewayInFlight 维护 sub2api_inflight_requests gauge。
+// 注意它必须排在 apiKeyAuth 之后（否则 platform 标签取不到），且排在
+// compositeTarget 之前 —— composite 组的真实平台在请求处理中才解析，
+// gauge 只需要一个有界标签。
+func trackGatewayInFlight(c *gin.Context) {
+	done := appmetrics.BeginInFlight(getGroupPlatform(c))
+	defer done()
+	c.Next()
+}
+
 // getGroupPlatform extracts the group platform from the API Key stored in context.
 func getGroupPlatform(c *gin.Context) string {
 	apiKey, ok := middleware.GetAPIKeyFromContext(c)
