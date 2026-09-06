@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/appmetrics"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -189,6 +190,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
+	gateway.Use(trackGatewayInFlight)
 	gateway.Use(compositeTarget)
 	gateway.Use(requireGroupAnthropic)
 	{
@@ -524,6 +526,12 @@ func getGroupPlatform(c *gin.Context) string {
 		}
 	}
 	return apiKey.Group.Platform
+}
+
+func trackGatewayInFlight(c *gin.Context) {
+	done := appmetrics.BeginInFlight(getGroupPlatform(c))
+	defer done()
+	c.Next()
 }
 
 func compositeTargetPlatformMiddleware(resolver *service.CompositeRouteResolver) gin.HandlerFunc {

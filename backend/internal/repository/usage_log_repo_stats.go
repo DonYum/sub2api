@@ -683,6 +683,7 @@ func (r *usageLogRepository) GetStatsWithFilters(ctx context.Context, filters Us
 		args = append(args, int16(*filters.BillingType))
 	}
 	conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, filters.BillingMode)
+	conditions, args = appendUsageLogReasoningEffortWhereCondition(conditions, args, filters.ReasoningEffort)
 	if filters.UpstreamModelMismatch != nil {
 		conditions = append(conditions, upstreamModelMismatchCondition("upstream_model_mismatch", *filters.UpstreamModelMismatch))
 	}
@@ -837,7 +838,7 @@ type AccountUsageStatsResponse = usagestats.AccountUsageStatsResponse
 // EndpointStat represents endpoint usage statistics row.
 type EndpointStat = usagestats.EndpointStat
 
-func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Context, endpointColumn string, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, modelSource string, requestType *int16, stream *bool, billingType *int8, billingMode string) (results []EndpointStat, err error) {
+func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Context, endpointColumn string, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, modelSource string, requestType *int16, stream *bool, billingType *int8, billingMode, reasoningEffort string) (results []EndpointStat, err error) {
 	actualCostExpr := "COALESCE(SUM(actual_cost), 0) as actual_cost"
 	if accountID > 0 && userID == 0 && apiKeyID == 0 {
 		actualCostExpr = "COALESCE(SUM(COALESCE(account_stats_cost, total_cost) * COALESCE(account_rate_multiplier, 1)), 0) as actual_cost"
@@ -878,6 +879,7 @@ func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Con
 		args = append(args, int16(*billingType))
 	}
 	query, args = appendUsageLogBillingModeQueryFilter(query, args, billingMode, "")
+	query, args = appendUsageLogReasoningEffortQueryFilter(query, args, reasoningEffort, "")
 	query += " GROUP BY endpoint ORDER BY requests DESC"
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)
@@ -906,13 +908,13 @@ func (r *usageLogRepository) getEndpointStatsByColumnWithFilters(ctx context.Con
 }
 
 // GetEndpointStatsWithFilters returns inbound endpoint statistics with optional filters.
-func (r *usageLogRepository) GetEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]EndpointStat, error) {
-	return r.getEndpointStatsByColumnWithFilters(ctx, "inbound_endpoint", startTime, endTime, userID, apiKeyID, accountID, groupID, model, "", requestType, stream, billingType, "")
+func (r *usageLogRepository) GetEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8, reasoningEffort string) ([]EndpointStat, error) {
+	return r.getEndpointStatsByColumnWithFilters(ctx, "inbound_endpoint", startTime, endTime, userID, apiKeyID, accountID, groupID, model, "", requestType, stream, billingType, "", reasoningEffort)
 }
 
 // GetUpstreamEndpointStatsWithFilters returns upstream endpoint statistics with optional filters.
-func (r *usageLogRepository) GetUpstreamEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8) ([]EndpointStat, error) {
-	return r.getEndpointStatsByColumnWithFilters(ctx, "upstream_endpoint", startTime, endTime, userID, apiKeyID, accountID, groupID, model, "", requestType, stream, billingType, "")
+func (r *usageLogRepository) GetUpstreamEndpointStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, model string, requestType *int16, stream *bool, billingType *int8, reasoningEffort string) ([]EndpointStat, error) {
+	return r.getEndpointStatsByColumnWithFilters(ctx, "upstream_endpoint", startTime, endTime, userID, apiKeyID, accountID, groupID, model, "", requestType, stream, billingType, "", reasoningEffort)
 }
 
 // GetAccountUsageStats returns comprehensive usage statistics for an account over a time range
@@ -1077,12 +1079,12 @@ func (r *usageLogRepository) GetAccountUsageStats(ctx context.Context, accountID
 	if err != nil {
 		models = []ModelStat{}
 	}
-	endpoints, endpointErr := r.GetEndpointStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, "", nil, nil, nil)
+	endpoints, endpointErr := r.GetEndpointStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, "", nil, nil, nil, "")
 	if endpointErr != nil {
 		logger.LegacyPrintf("repository.usage_log", "GetEndpointStatsWithFilters failed in GetAccountUsageStats: %v", endpointErr)
 		endpoints = []EndpointStat{}
 	}
-	upstreamEndpoints, upstreamEndpointErr := r.GetUpstreamEndpointStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, "", nil, nil, nil)
+	upstreamEndpoints, upstreamEndpointErr := r.GetUpstreamEndpointStatsWithFilters(ctx, startTime, endTime, 0, 0, accountID, 0, "", nil, nil, nil, "")
 	if upstreamEndpointErr != nil {
 		logger.LegacyPrintf("repository.usage_log", "GetUpstreamEndpointStatsWithFilters failed in GetAccountUsageStats: %v", upstreamEndpointErr)
 		upstreamEndpoints = []EndpointStat{}

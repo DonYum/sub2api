@@ -1108,10 +1108,10 @@ func (s *OpenAIGatewayService) SelectAccountWithLoadAwareness(ctx context.Contex
 	// 分组利润控制：legacy 公共入口同样装门，保证不经
 	// selectAccountWithScheduler 的调用方也无法绕过利润准入。
 	ctx = s.withOpenAIProfitControlGate(ctx, groupID)
-	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true)
+	return s.selectAccountWithLoadAwareness(ctx, groupID, PlatformOpenAI, sessionHash, requestedModel, excludedIDs, false, "", true, true)
 }
 
-func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool) (*AccountSelectionResult, error) {
+func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Context, groupID *int64, platform string, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}, requireCompact bool, requiredCapability OpenAIEndpointCapability, useUpstreamTokenCost bool, preemptSticky bool) (*AccountSelectionResult, error) {
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	if s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 		slog.Warn("channel pricing restriction blocked request",
@@ -1173,6 +1173,27 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return excluded
 	}
 
+	preemptCandidates := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		acc := &accounts[i]
+		if isExcluded(acc.ID) {
+			continue
+		}
+		if reason := openAICompatibleAccountEligibilityFailureReason(ctx, acc, platform, requestedModel, false, requiredCapability); reason != "" {
+			continue
+		}
+		if !parentHealthyForShadow(acc, s.parentAccountLookup(ctx)) {
+			continue
+		}
+		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
+			continue
+		}
+		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+			continue
+		}
+		preemptCandidates = append(preemptCandidates, acc)
+	}
+
 	// ============ Layer 1: Sticky session ============
 	// A healthy sticky account whose bounded wait queue is full may be used as a
 	// one-request capacity spillover in Layer 2. Keep that spillover temporary:
@@ -1200,7 +1221,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else {
+					} else if !preemptSticky || !hasHigherPriorityGatewayCandidate(preemptCandidates, account) {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {
 							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)

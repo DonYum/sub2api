@@ -79,6 +79,20 @@ func TestLoadServerTimingConfig(t *testing.T) {
 	})
 }
 
+func TestLoadMetricsListenAddrDefault(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("CONFIG_FILE", "")
+	t.Setenv("DATA_DIR", "")
+	t.Setenv("JWT_SECRET", "")
+	t.Setenv("METRICS_ENABLED", "true")
+
+	cfg, err := LoadForBootstrap()
+	require.NoError(t, err)
+	require.Equal(t, "127.0.0.1:19090", cfg.Metrics.ListenAddr)
+	require.NoError(t, validateMetricsConfig(cfg.Metrics))
+}
+
 func TestLoadRedisUsernameFromEnvironment(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("REDIS_USERNAME", "app-user")

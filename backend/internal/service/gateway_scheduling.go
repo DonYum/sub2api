@@ -250,6 +250,42 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		return needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
 	}
 
+	preemptCandidates := make([]*Account, 0, len(accounts))
+	for i := range accounts {
+		acc := &accounts[i]
+		if isExcluded(acc.ID) {
+			continue
+		}
+		if !s.isAccountSchedulableForSelection(acc) {
+			continue
+		}
+		if !s.isGatewayAccountProfitEligible(ctx, acc) {
+			continue
+		}
+		if !s.isAccountAllowedForPlatform(acc, platform, useMixed) {
+			continue
+		}
+		if requestedModel != "" && !s.isModelSupportedByAccountWithContext(ctx, acc, requestedModel) {
+			continue
+		}
+		if isChannelRestricted(acc) {
+			continue
+		}
+		if !s.isAccountSchedulableForModelSelection(ctx, acc, requestedModel) {
+			continue
+		}
+		if !s.isAccountSchedulableForQuota(acc) {
+			continue
+		}
+		if !s.isAccountSchedulableForWindowCost(ctx, acc, false) {
+			continue
+		}
+		if !s.isAccountSchedulableForRPM(ctx, acc, false) {
+			continue
+		}
+		preemptCandidates = append(preemptCandidates, acc)
+	}
+
 	// 获取模型路由配置（anthropic 目标平台；composite 分组按目标平台判断）
 	var routingAccountIDs []int64
 	if group != nil && requestedModel != "" && platform == PlatformAnthropic &&
@@ -365,7 +401,8 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 						rpmPass := gatePass && s.isAccountSchedulableForRPM(ctx, stickyAccount, true)
 
-						if rpmPass { // 粘性会话窗口费用+RPM 检查
+						if rpmPass && !hasHigherPriorityGatewayCandidate(routingCandidates, stickyAccount) {
+							// 路由池里若已有更高优先级候选，不让低优 sticky 抢占。
 							result, err := s.tryAcquireAccountSlot(ctx, stickyAccountID, stickyAccount.Concurrency)
 							if err == nil && result.Acquired {
 								// 会话数量限制检查
@@ -565,7 +602,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 					"rpm_ok", rpmOK,
 				)
 
-				if !clearSticky && platformOK && profitOK && modelSupported && channelOK && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable {
+				if !clearSticky && platformOK && profitOK && modelSupported && channelOK && modelSchedulable && quotaOK && windowCostOK && rpmOK && schedulable && !hasHigherPriorityGatewayCandidate(preemptCandidates, account) {
 					result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 					if err == nil && result.Acquired {
 						// 会话数量限制检查
@@ -1712,6 +1749,21 @@ func sortAccountsByPriorityAndLastUsed(accounts []*Account, preferOAuth bool) {
 		}
 	})
 	shuffleWithinPriorityAndLastUsed(accounts, preferOAuth)
+}
+
+func hasHigherPriorityGatewayCandidate(candidates []*Account, sticky *Account) bool {
+	if sticky == nil {
+		return false
+	}
+	for _, candidate := range candidates {
+		if candidate == nil {
+			continue
+		}
+		if candidate.Priority < sticky.Priority {
+			return true
+		}
+	}
+	return false
 }
 
 // shuffleWithinSortGroups 对排序后的 accountWithLoad 切片，按 (Priority, LoadRate, LastUsedAt) 分组后组内随机打乱。

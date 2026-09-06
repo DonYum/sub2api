@@ -2239,6 +2239,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
 	preserveGuardianParentBinding := preserveOpenAIGuardianParentBinding(ctx, sessionHash)
+	preemptSticky := strings.TrimSpace(previousResponseID) == "" || previousResponseCanMove
 	guardianParentAccountID := int64(0)
 	if strings.TrimSpace(previousResponseID) == "" {
 		guardianParentAccountID = s.resolveOpenAIGuardianParentAccountID(ctx, groupID)
@@ -2283,7 +2284,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		if requiredTransport == OpenAIUpstreamTransportAny || requiredTransport == OpenAIUpstreamTransportHTTPSSE {
 			effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 			for {
-				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, platform, legacySessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredCapability, useUpstreamTokenCost)
+				selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, platform, legacySessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredCapability, useUpstreamTokenCost, preemptSticky)
 				if err != nil {
 					return nil, decision, err
 				}
@@ -2308,7 +2309,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 
 		effectiveExcludedIDs := cloneExcludedAccountIDs(excludedIDs)
 		for {
-			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, platform, legacySessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredCapability, useUpstreamTokenCost)
+			selection, err := s.selectAccountWithLoadAwareness(ctx, groupID, platform, legacySessionHash, requestedModel, effectiveExcludedIDs, requireCompact, requiredCapability, useUpstreamTokenCost, preemptSticky)
 			if err != nil {
 				return nil, decision, err
 			}
