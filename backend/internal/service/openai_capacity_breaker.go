@@ -186,7 +186,7 @@ func (s *OpenAIGatewayService) RecordOpenAICapacityShed(ctx context.Context, acc
 	if account.Platform != PlatformOpenAI {
 		return &OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "non_openai_account"}
 	}
-	if account.Type != AccountTypeOAuth {
+	if !account.IsOpenAIOAuthLike() {
 		return &OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "non_openai_oauth_account"}
 	}
 	if groupID == nil || *groupID <= 0 {
@@ -237,7 +237,7 @@ func (s *OpenAIGatewayService) openAICapacityBreakerPeerIDs(ctx context.Context,
 	ids := make([]int64, 0, len(accounts))
 	for i := range accounts {
 		account := &accounts[i]
-		if account.ID == currentAccountID || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
+		if account.ID == currentAccountID || !account.IsOpenAIOAuthLike() {
 			continue
 		}
 		if strings.TrimSpace(requestedModel) != "" && !account.IsModelSupported(requestedModel) {

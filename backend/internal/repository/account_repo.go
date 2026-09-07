@@ -2343,7 +2343,7 @@ func (r *accountRepository) ApplyOpenAICapacityBreaker(ctx context.Context, inpu
 		}
 		return nil, err
 	}
-	if accountType != service.AccountTypeOAuth {
+	if accountType != service.AccountTypeOAuth && accountType != service.AccountTypeSetupToken {
 		return &service.OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "non_openai_oauth_account"}, nil
 	}
 
@@ -2438,7 +2438,7 @@ func (r *accountRepository) countOpenAICapacityBreakerPeers(ctx context.Context,
 			AND deleted_at IS NULL
 			AND status = $2
 			AND platform = $3
-			AND type = $6
+			AND type = ANY($6)
 			AND schedulable = TRUE
 			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until <= $4)
 			AND (expires_at IS NULL OR expires_at > $4 OR auto_pause_on_expired = FALSE)
@@ -2448,7 +2448,7 @@ func (r *accountRepository) countOpenAICapacityBreakerPeers(ctx context.Context,
 				COALESCE(extra->'model_rate_limits', '{}'::jsonb) ? $5
 				AND NULLIF(extra->'model_rate_limits'->$5->>'rate_limit_reset_at', '')::timestamptz > $4
 			)
-	`, []any{pq.Array(ids), service.StatusActive, service.PlatformOpenAI, now, model, service.AccountTypeOAuth}, &count); err != nil {
+	`, []any{pq.Array(ids), service.StatusActive, service.PlatformOpenAI, now, model, pq.Array([]string{service.AccountTypeOAuth, service.AccountTypeSetupToken})}, &count); err != nil {
 		return 0, err
 	}
 	return count, nil

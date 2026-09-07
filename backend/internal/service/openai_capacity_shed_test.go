@@ -138,11 +138,12 @@ func TestRecordOpenAICapacityShedOnlyAppliesToOAuthAccounts(t *testing.T) {
 		ClientMessage: "Our servers are currently overloaded. Please try again later.",
 	}
 
-	t.Run("oauth records and only counts oauth peers", func(t *testing.T) {
+	t.Run("oauth-like records and only counts oauth-like peers", func(t *testing.T) {
 		repo := &openAICapacityBreakerRepoStub{accounts: []Account{
 			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
 			{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
-			{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true},
+			{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeSetupToken, Status: StatusActive, Schedulable: true},
+			{ID: 4, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true},
 		}}
 		gateway := &OpenAIGatewayService{accountRepo: repo}
 
@@ -151,7 +152,22 @@ func TestRecordOpenAICapacityShedOnlyAppliesToOAuthAccounts(t *testing.T) {
 		require.NotNil(t, decision)
 		require.True(t, decision.Applied)
 		require.Len(t, repo.inputs, 1)
-		require.Equal(t, []int64{2}, repo.inputs[0].PeerAccountIDs)
+		require.Equal(t, []int64{2, 3}, repo.inputs[0].PeerAccountIDs)
+	})
+
+	t.Run("setup token records", func(t *testing.T) {
+		repo := &openAICapacityBreakerRepoStub{accounts: []Account{
+			{ID: 21, Platform: PlatformOpenAI, Type: AccountTypeSetupToken, Status: StatusActive, Schedulable: true},
+			{ID: 22, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
+		}}
+		gateway := &OpenAIGatewayService{accountRepo: repo}
+
+		decision := gateway.RecordOpenAICapacityShed(context.Background(), &repo.accounts[0], &groupID, "gpt-6-astra", failoverErr)
+
+		require.NotNil(t, decision)
+		require.True(t, decision.Applied)
+		require.Len(t, repo.inputs, 1)
+		require.Equal(t, int64(21), repo.inputs[0].AccountID)
 	})
 
 	t.Run("apikey pool is outside breaker scope", func(t *testing.T) {
