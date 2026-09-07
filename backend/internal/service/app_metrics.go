@@ -45,14 +45,19 @@ func recordErrorAppMetrics(entry *OpsInsertErrorLogInput) {
 	if entry.RequestType != nil {
 		requestType = RequestTypeFromInt16(*entry.RequestType).String()
 	}
-	upstreamKinds := make([]string, 0, len(entry.UpstreamErrors))
-	upstreamMessages := make([]string, 0, len(entry.UpstreamErrors)+1)
-	providerCodes := make([]string, 0, len(entry.UpstreamErrors))
-	providerTypes := make([]string, 0, len(entry.UpstreamErrors))
+	upstreamErrors := entry.UpstreamErrors
+	if len(upstreamErrors) == 0 && entry.UpstreamErrorsJSON != nil {
+		// Queued entries retain sanitized JSON after releasing the original event slice.
+		upstreamErrors, _ = ParseOpsUpstreamErrors(*entry.UpstreamErrorsJSON)
+	}
+	upstreamKinds := make([]string, 0, len(upstreamErrors))
+	upstreamMessages := make([]string, 0, len(upstreamErrors)+1)
+	providerCodes := make([]string, 0, len(upstreamErrors))
+	providerTypes := make([]string, 0, len(upstreamErrors))
 	if entry.UpstreamErrorMessage != nil {
 		upstreamMessages = append(upstreamMessages, *entry.UpstreamErrorMessage)
 	}
-	for _, event := range entry.UpstreamErrors {
+	for _, event := range upstreamErrors {
 		if event != nil {
 			upstreamKinds = append(upstreamKinds, event.Kind)
 			upstreamMessages = append(upstreamMessages, event.Message)
