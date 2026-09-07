@@ -275,6 +275,49 @@ func logOpenAICapacityShedRescue(reqLog *zap.Logger, message string, accountID i
 	)
 }
 
+func openAICapacityShedMessageFromCommunicatedError(err error) string {
+	if err == nil {
+		return ""
+	}
+	message := strings.TrimSpace(err.Error())
+	for _, prefix := range []string{
+		"upstream response failed (passthrough):",
+		"upstream response failed:",
+	} {
+		if strings.HasPrefix(message, prefix) {
+			message = strings.TrimSpace(strings.TrimPrefix(message, prefix))
+			break
+		}
+	}
+	if idx := strings.LastIndex(message, "message="); idx >= 0 {
+		message = strings.TrimSpace(message[idx+len("message="):])
+	}
+	if !service.IsOpenAICapacityShedText(message) {
+		return ""
+	}
+	return message
+}
+
+func recordOpenAICapacityShedCommunicatedError(ctx context.Context, gatewayService *service.OpenAIGatewayService, reqLog *zap.Logger, account *service.Account, groupID *int64, requestedModel string, err error, logMessage string) *service.OpenAICapacityBreakerDecision {
+	if gatewayService == nil || account == nil {
+		return nil
+	}
+	message := openAICapacityShedMessageFromCommunicatedError(err)
+	if message == "" {
+		return nil
+	}
+	failoverErr := &service.UpstreamFailoverError{
+		StatusCode:             http.StatusServiceUnavailable,
+		Reason:                 service.GatewayFailureReason("openai_capacity_shed"),
+		RequestScopedTransient: true,
+		ClientStatusCode:       http.StatusServiceUnavailable,
+		ClientMessage:          message,
+	}
+	decision := gatewayService.RecordOpenAICapacityShed(ctx, account, groupID, requestedModel, failoverErr)
+	logOpenAICapacityBreakerDecision(reqLog, logMessage, account.ID, decision)
+	return decision
+}
+
 func openAIResponsesToolsRequireNativeRouting(tools gjson.Result) bool {
 	if !tools.IsArray() {
 		return false
@@ -1072,6 +1115,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				if !upstreamErrorAlreadyCommunicated {
 					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
 				}
+				recordOpenAICapacityShedCommunicatedError(c.Request.Context(), h.gatewayService, reqLog, account, apiKey.GroupID, reqModel, err, "openai.capacity_shed_committed_breaker")
 				fields := []zap.Field{
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),
@@ -1629,6 +1673,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, currentRoutingModel, false, result), false, nil, err)
 				wroteFallback := h.ensureAnthropicErrorResponse(c, streamStarted)
+				recordOpenAICapacityShedCommunicatedError(c.Request.Context(), h.gatewayService, reqLog, account, apiKey.GroupID, currentRoutingModel, err, "openai_messages.capacity_shed_committed_breaker")
 				reqLog.Warn("openai_messages.forward_failed",
 					zap.Int64("account_id", account.ID),
 					zap.Bool("fallback_error_response_written", wroteFallback),

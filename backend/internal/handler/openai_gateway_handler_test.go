@@ -2175,6 +2175,43 @@ func (u *openAIHTTPPassthroughCapacityShedRescueUpstream) calls() []int64 {
 	return append([]int64(nil), u.accountIDs...)
 }
 
+type openAIHTTPPassthroughCapacityShedAfterOutputUpstream struct {
+	service.HTTPUpstream
+	mu         sync.Mutex
+	accountIDs []int64
+}
+
+func (u *openAIHTTPPassthroughCapacityShedAfterOutputUpstream) Do(_ *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	u.mu.Lock()
+	u.accountIDs = append(u.accountIDs, accountID)
+	u.mu.Unlock()
+	body := strings.Join([]string{
+		"event: response.created",
+		`data: {"type":"response.created","response":{"id":"resp_capacity_shed"}}`,
+		"",
+		"event: response.output_text.delta",
+		`data: {"type":"response.output_text.delta","delta":"partial"}`,
+		"",
+		"event: error",
+		`data: {"type":"error","error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}`,
+		"",
+		"event: response.failed",
+		`data: {"type":"response.failed","response":{"id":"resp_capacity_shed","status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`,
+		"",
+	}, "\n")
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}, nil
+}
+
+func (u *openAIHTTPPassthroughCapacityShedAfterOutputUpstream) calls() []int64 {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	return append([]int64(nil), u.accountIDs...)
+}
+
 func (s *openAIWSFailoverHandlerAccountRepoStub) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
 	out := make([]service.Account, 0, len(s.accounts))
 	for _, account := range s.accounts {
@@ -2545,6 +2582,74 @@ func TestOpenAIResponses_CapacityShedRescueFailureDoesNotChain(t *testing.T) {
 	require.Len(t, accountRepo.breakerInputs, 2)
 	require.Equal(t, int64(9916), accountRepo.breakerInputs[0].AccountID)
 	require.Equal(t, int64(9917), accountRepo.breakerInputs[1].AccountID)
+}
+
+func TestOpenAIResponses_CapacityShedAfterOutputRecordsBreakerWithoutReplay(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groupID := int64(4207)
+	accounts := []service.Account{
+		{
+			ID: 9919, Name: "capacity-shed-after-output", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 1,
+			Credentials: map[string]any{
+				"api_key":               "sk-shed",
+				"base_url":              "https://api.example.test",
+				"pool_mode_retry_count": float64(0),
+			},
+			Extra: map[string]any{"openai_passthrough": true},
+		},
+		{
+			ID: 9920, Name: "peer", Platform: service.PlatformOpenAI,
+			Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true, Priority: 2,
+			Credentials: map[string]any{"api_key": "sk-peer", "base_url": "https://api.example.test"},
+			Extra:       map[string]any{"openai_passthrough": true},
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Default.RateMultiplier = 1
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Gateway.MaxAccountSwitches = 3
+
+	accountRepo := &openAIWSFailoverHandlerAccountRepoStub{accounts: accounts}
+	upstream := &openAIHTTPPassthroughCapacityShedAfterOutputUpstream{}
+	billingCacheSvc := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billingCacheSvc.Stop)
+	gatewaySvc := service.NewOpenAIGatewayService(
+		accountRepo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+		service.NewBillingService(cfg, nil), nil, billingCacheSvc, upstream,
+		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil,
+	)
+	h := NewOpenAIGatewayHandler(
+		gatewaySvc,
+		service.NewConcurrencyService(nil),
+		billingCacheSvc,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg),
+		nil, nil, nil, nil, cfg,
+	)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/openai/v1/responses", strings.NewReader(`{"model":"gpt-6-astra","input":"hello","stream":true}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
+		ID: 1807, GroupID: &groupID,
+		User:  &service.User{ID: 1707, Status: service.StatusActive},
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
+	})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1707, Concurrency: 0})
+
+	h.Responses(c)
+
+	require.Equal(t, []int64{9919}, upstream.calls())
+	require.Len(t, accountRepo.breakerInputs, 1)
+	require.Equal(t, int64(9919), accountRepo.breakerInputs[0].AccountID)
+	require.Equal(t, groupID, accountRepo.breakerInputs[0].GroupID)
+	require.Equal(t, "gpt-6-astra", accountRepo.breakerInputs[0].Model)
+	require.Contains(t, accountRepo.breakerInputs[0].Message, "servers are currently overloaded")
+	require.Contains(t, rec.Body.String(), "partial")
+	require.NotContains(t, rec.Body.String(), "resp_rescued")
+	require.NotContains(t, rec.Body.String(), "server_is_overloaded")
+	require.Contains(t, rec.Body.String(), `"code":"server_error"`)
 }
 
 func TestOpenAIResponsesWebSocket_FailoverOnUpstreamUsageLimitEvent(t *testing.T) {

@@ -56,6 +56,10 @@ func IsOpenAICapacityShedFailoverError(err *UpstreamFailoverError) bool {
 	return err != nil && err.Reason == GatewayFailureReason("openai_capacity_shed")
 }
 
+func IsOpenAICapacityShedText(text string) bool {
+	return isOpenAICapacityShedMessage(text)
+}
+
 func NextOpenAICapacityBreakerState(existing OpenAICapacityBreakerModelState, now time.Time, statusCode int, message string) (OpenAICapacityBreakerModelState, *OpenAICapacityBreakerDecision) {
 	now = now.UTC()
 	if existing.Permanent {

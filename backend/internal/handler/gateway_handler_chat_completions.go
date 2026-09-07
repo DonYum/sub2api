@@ -318,6 +318,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			if !upstreamErrorAlreadyCommunicated {
 				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
 			}
+			recordOpenAICapacityShedCommunicatedError(c.Request.Context(), h.openAIGatewayService, reqLog, account, apiKey.GroupID, reqModel, err, "gateway.cc.capacity_shed_committed_breaker")
 			reqLog.Error("gateway.cc.forward_failed",
 				zap.Int64("account_id", account.ID),
 				zap.Bool("fallback_error_response_written", wroteFallback),
