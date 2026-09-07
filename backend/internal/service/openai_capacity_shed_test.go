@@ -29,6 +29,28 @@ func (r *capacityShedAccountRepoStub) SetTempUnschedulable(_ context.Context, _ 
 	return nil
 }
 
+type openAICapacityBreakerRepoStub struct {
+	AccountRepository
+
+	accounts []Account
+	inputs   []OpenAICapacityBreakerApplyInput
+}
+
+func (r *openAICapacityBreakerRepoStub) ListSchedulableByGroupIDAndPlatform(ctx context.Context, groupID int64, platform string) ([]Account, error) {
+	var out []Account
+	for _, account := range r.accounts {
+		if account.Platform == platform && account.IsSchedulable() {
+			out = append(out, account)
+		}
+	}
+	return out, nil
+}
+
+func (r *openAICapacityBreakerRepoStub) ApplyOpenAICapacityBreaker(ctx context.Context, input OpenAICapacityBreakerApplyInput) (*OpenAICapacityBreakerDecision, error) {
+	r.inputs = append(r.inputs, input)
+	return &OpenAICapacityBreakerDecision{Applied: true, Level: 1, RemainingPeerCount: len(input.PeerAccountIDs)}, nil
+}
+
 // 上游容量降载是请求级信号：故障因素（客户端身份、模型容量）与账号无关，
 // 同账号重试用尽后不得把账号临时摘掉——否则一个被降载的请求会顺着 failover
 // 把整池账号逐个封禁，而每个账号都会以同一个错误失败。
@@ -106,6 +128,46 @@ func TestOpenAIHTTPCapacityShedIsRequestScopedForOAuthAccounts(t *testing.T) {
 		"gpt-5",
 	))
 	require.Zero(t, repo.tempUnschedCalls)
+}
+
+func TestRecordOpenAICapacityShedOnlyAppliesToOAuthAccounts(t *testing.T) {
+	groupID := int64(42)
+	failoverErr := &UpstreamFailoverError{
+		Reason:        GatewayFailureReason("openai_capacity_shed"),
+		StatusCode:    http.StatusServiceUnavailable,
+		ClientMessage: "Our servers are currently overloaded. Please try again later.",
+	}
+
+	t.Run("oauth records and only counts oauth peers", func(t *testing.T) {
+		repo := &openAICapacityBreakerRepoStub{accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
+			{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
+			{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true},
+		}}
+		gateway := &OpenAIGatewayService{accountRepo: repo}
+
+		decision := gateway.RecordOpenAICapacityShed(context.Background(), &repo.accounts[0], &groupID, "gpt-6-astra", failoverErr)
+
+		require.NotNil(t, decision)
+		require.True(t, decision.Applied)
+		require.Len(t, repo.inputs, 1)
+		require.Equal(t, []int64{2}, repo.inputs[0].PeerAccountIDs)
+	})
+
+	t.Run("apikey pool is outside breaker scope", func(t *testing.T) {
+		repo := &openAICapacityBreakerRepoStub{accounts: []Account{
+			{ID: 11, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true},
+			{ID: 12, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: true},
+		}}
+		gateway := &OpenAIGatewayService{accountRepo: repo}
+
+		decision := gateway.RecordOpenAICapacityShed(context.Background(), &repo.accounts[0], &groupID, "gpt-6-astra", failoverErr)
+
+		require.NotNil(t, decision)
+		require.False(t, decision.Applied)
+		require.Equal(t, "non_openai_oauth_account", decision.SkippedReason)
+		require.Empty(t, repo.inputs)
+	})
 }
 
 // 上游降载的真实序列是「event: error → event: response.failed」。error 帧不算

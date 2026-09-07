@@ -2434,7 +2434,7 @@ func TestOpenAIResponses_APIKeyPassthroughSSERateLimitUsesConfiguredPoolRetry(t 
 	require.Equal(t, "Upstream rate limit exceeded, please retry later", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
 }
 
-func TestOpenAIResponses_CapacityShedBreakerRescuesWithOneNormalReselection(t *testing.T) {
+func TestOpenAIResponses_APIKeyCapacityShedExhaustsSameAccountRetryWithoutBreaker(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	groupID := int64(4205)
 	accounts := []service.Account{
@@ -2504,14 +2504,13 @@ func TestOpenAIResponses_CapacityShedBreakerRescuesWithOneNormalReselection(t *t
 
 	h.Responses(c)
 
-	require.Equal(t, []int64{9914, 9914, 9914, 9914, 9915}, upstream.calls())
-	require.Equal(t, http.StatusOK, rec.Code)
-	require.Contains(t, rec.Body.String(), "resp_rescued")
-	require.Len(t, accountRepo.breakerInputs, 1)
-	require.Equal(t, int64(9914), accountRepo.breakerInputs[0].AccountID)
+	require.Equal(t, []int64{9914, 9914, 9914, 9914}, upstream.calls())
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.NotContains(t, rec.Body.String(), "resp_rescued")
+	require.Empty(t, accountRepo.breakerInputs)
 }
 
-func TestOpenAIResponses_CapacityShedRescueFailureDoesNotChain(t *testing.T) {
+func TestOpenAIResponses_APIKeyCapacityShedRescueFailureDoesNotChain(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	groupID := int64(4206)
 	accounts := []service.Account{
@@ -2577,14 +2576,12 @@ func TestOpenAIResponses_CapacityShedRescueFailureDoesNotChain(t *testing.T) {
 
 	h.Responses(c)
 
-	require.Equal(t, []int64{9916, 9916, 9916, 9916, 9917}, upstream.calls())
-	require.Equal(t, http.StatusBadGateway, rec.Code)
-	require.Len(t, accountRepo.breakerInputs, 2)
-	require.Equal(t, int64(9916), accountRepo.breakerInputs[0].AccountID)
-	require.Equal(t, int64(9917), accountRepo.breakerInputs[1].AccountID)
+	require.Equal(t, []int64{9916, 9916, 9916, 9916}, upstream.calls())
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	require.Empty(t, accountRepo.breakerInputs)
 }
 
-func TestOpenAIResponses_CapacityShedAfterOutputRecordsBreakerWithoutReplay(t *testing.T) {
+func TestOpenAIResponses_APIKeyCapacityShedAfterOutputDoesNotRecordBreaker(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	groupID := int64(4207)
 	accounts := []service.Account{
@@ -2641,11 +2638,7 @@ func TestOpenAIResponses_CapacityShedAfterOutputRecordsBreakerWithoutReplay(t *t
 	h.Responses(c)
 
 	require.Equal(t, []int64{9919}, upstream.calls())
-	require.Len(t, accountRepo.breakerInputs, 1)
-	require.Equal(t, int64(9919), accountRepo.breakerInputs[0].AccountID)
-	require.Equal(t, groupID, accountRepo.breakerInputs[0].GroupID)
-	require.Equal(t, "gpt-6-astra", accountRepo.breakerInputs[0].Model)
-	require.Contains(t, accountRepo.breakerInputs[0].Message, "servers are currently overloaded")
+	require.Empty(t, accountRepo.breakerInputs)
 	require.Contains(t, rec.Body.String(), "partial")
 	require.NotContains(t, rec.Body.String(), "resp_rescued")
 	require.NotContains(t, rec.Body.String(), "server_is_overloaded")

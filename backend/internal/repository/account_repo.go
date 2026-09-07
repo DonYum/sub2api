@@ -2329,17 +2329,22 @@ func (r *accountRepository) ApplyOpenAICapacityBreaker(ctx context.Context, inpu
 	}
 
 	var extraRaw string
+	var accountType string
 	if err := scanSingleRow(txCtx, client, `
-		SELECT COALESCE(extra, '{}'::jsonb)::text
+		SELECT COALESCE(extra, '{}'::jsonb)::text,
+			COALESCE(type, '')
 		FROM accounts
 		WHERE id = $1
 			AND deleted_at IS NULL
 		FOR UPDATE
-	`, []any{input.AccountID}, &extraRaw); err != nil {
+	`, []any{input.AccountID}, &extraRaw, &accountType); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, service.ErrAccountNotFound
 		}
 		return nil, err
+	}
+	if accountType != service.AccountTypeOAuth {
+		return &service.OpenAICapacityBreakerDecision{Applied: false, SkippedReason: "non_openai_oauth_account"}, nil
 	}
 
 	remainingPeers, err := r.countOpenAICapacityBreakerPeers(txCtx, client, input.PeerAccountIDs, input.Model, input.Now)
@@ -2433,6 +2438,7 @@ func (r *accountRepository) countOpenAICapacityBreakerPeers(ctx context.Context,
 			AND deleted_at IS NULL
 			AND status = $2
 			AND platform = $3
+			AND type = $6
 			AND schedulable = TRUE
 			AND (temp_unschedulable_until IS NULL OR temp_unschedulable_until <= $4)
 			AND (expires_at IS NULL OR expires_at > $4 OR auto_pause_on_expired = FALSE)
@@ -2442,7 +2448,7 @@ func (r *accountRepository) countOpenAICapacityBreakerPeers(ctx context.Context,
 				COALESCE(extra->'model_rate_limits', '{}'::jsonb) ? $5
 				AND NULLIF(extra->'model_rate_limits'->$5->>'rate_limit_reset_at', '')::timestamptz > $4
 			)
-	`, []any{pq.Array(ids), service.StatusActive, service.PlatformOpenAI, now, model}, &count); err != nil {
+	`, []any{pq.Array(ids), service.StatusActive, service.PlatformOpenAI, now, model, service.AccountTypeOAuth}, &count); err != nil {
 		return 0, err
 	}
 	return count, nil
