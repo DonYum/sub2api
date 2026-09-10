@@ -49,3 +49,8 @@ func TestDefaultModels_ContainsGPT6Family(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultModelsIncludeGPTImage25(t *testing.T) {
+	require.Contains(t, DefaultModelIDs(), "gpt-image-2.5-flare")
+	require.Contains(t, DefaultModelIDs(), "gpt-image-2.5-sunburst")
+}

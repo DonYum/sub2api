@@ -552,19 +552,22 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 						return
 					}
 				}
-					if outputStarted && !cyberHit {
-						if codexFailureTerminal && eventType == "error" {
-							// OpenAI commonly follows a bare error with response.failed.
-							// Defer account health updates so the pair is applied once.
-							bareErrorAccountSideEffectsPending = true
-						} else {
-							s.handleOpenAIStreamTerminalAccountSideEffects(c, account, dataBytes, failedMessage, resp.Header, mappedModel)
-							if eventType == "response.failed" {
-								s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
-							}
-							bareErrorAccountSideEffectsPending = false
+				if outputStarted && !cyberHit {
+					if codexFailureTerminal && eventType == "error" {
+						// OpenAI commonly follows a bare error with response.failed.
+						// Defer account health updates so the pair is applied once.
+						bareErrorAccountSideEffectsPending = true
+					} else {
+						s.handleOpenAIStreamTerminalAccountSideEffects(c, account, dataBytes, failedMessage, resp.Header, mappedModel)
+						if eventType == "response.failed" {
+							// Once semantic output is committed, failover replay is unsafe. Keep
+							// the terminal event on the existing stream, but retain the upstream
+							// request ID and payload for operations diagnostics.
+							s.recordOpenAIStreamUpstreamError(c, account, false, upstreamRequestID, "stream_failed", dataBytes, failedMessage)
 						}
+						bareErrorAccountSideEffectsPending = false
 					}
+				}
 				if !outputStarted {
 					shouldFailover := false
 					if !cyberHit {
