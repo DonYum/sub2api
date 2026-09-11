@@ -348,9 +348,13 @@ const loadAvailableModels = async () => {
   selectedModelId.value = '' // Reset selection before loading
   try {
     const models = await adminAPI.accounts.getAvailableModels(props.account.id)
+    const normalizedModels = models.map((m) => ({
+      ...m,
+      display_name: m.display_name?.trim() || m.id
+    }))
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
-      ? sortTestModels(models)
-      : models
+      ? sortTestModels(normalizedModels)
+      : normalizedModels
     // Default selection by platform
     if (availableModels.value.length > 0) {
       if (props.account.platform === 'gemini') {

@@ -220,4 +220,29 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     })
   })
+
+  it('当模型 display_name 为空或仅空格时回退为模型 id', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.6-turbo', display_name: '' },
+      { id: 'gpt-5.6-codex', display_name: '   ' },
+      { id: 'gpt-5.6-chat', display_name: 'GPT 5.6 Chat' }
+    ])
+
+    const wrapper = mountModal({
+      id: 26,
+      name: '147-gpt-AI',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const models = (wrapper.vm as any).availableModels
+    expect(models).toEqual([
+      expect.objectContaining({ id: 'gpt-5.6-turbo', display_name: 'gpt-5.6-turbo' }),
+      expect.objectContaining({ id: 'gpt-5.6-codex', display_name: 'gpt-5.6-codex' }),
+      expect.objectContaining({ id: 'gpt-5.6-chat', display_name: 'GPT 5.6 Chat' })
+    ])
+  })
 })
