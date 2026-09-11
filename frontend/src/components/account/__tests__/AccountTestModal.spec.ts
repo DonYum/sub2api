@@ -189,4 +189,37 @@ describe('AccountTestModal', () => {
 
     expect(wrapper.text()).toContain('已通过 /v1/chat/completions 验证')
   })
+
+  it('当模型 display_name 为空或仅空格时回退为模型 id', async () => {
+    getAvailableModelsMock.mockResolvedValue([
+      { id: 'claude-3-5-sonnet', display_name: '' },
+      { id: 'claude-3-opus', display_name: '   ' },
+      { id: 'claude-3-haiku', display_name: 'Claude 3 Haiku' }
+    ])
+
+    const wrapper = mount(AccountTestModal, {
+      props: {
+        show: false,
+        account: buildAccount()
+      },
+      global: {
+        stubs: {
+          BaseDialog: BaseDialogStub,
+          Select: SelectStub,
+          TextArea: TextAreaStub,
+          Icon: true
+        }
+      }
+    })
+
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const models = (wrapper.vm as any).availableModels
+    expect(models).toEqual([
+      expect.objectContaining({ id: 'claude-3-5-sonnet', display_name: 'claude-3-5-sonnet' }),
+      expect.objectContaining({ id: 'claude-3-opus', display_name: 'claude-3-opus' }),
+      expect.objectContaining({ id: 'claude-3-haiku', display_name: 'Claude 3 Haiku' })
+    ])
+  })
 })
