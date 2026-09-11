@@ -218,7 +218,6 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 	requestPayloadHash := service.HashUsageRequestPayload([]byte(req.Query))
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 	sessionID := service.ExtractClientSessionID(c)
-	codingAgentMetadata := service.ExtractCodingAgentMetadata(c, nil, clientIP)
 	// Request IDs are billing idempotency keys, so they must be unique per invocation.
 	// Query/IP/UA hashes would collapse repeated identical searches into one charge.
 	searchRequestID := searchLabel + ":" + uuid.NewString()
@@ -238,19 +237,18 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 				SearchCount: 1,
 				Duration:    0,
 			},
-			APIKey:              apiKey,
-			User:                apiKey.User,
-			Account:             account,
-			Subscription:        subscription,
-			InboundEndpoint:     inboundEndpoint,
-			UpstreamEndpoint:    upstreamEndpoint,
-			UserAgent:           userAgent,
-			IPAddress:           clientIP,
-			SessionID:           sessionID,
-			CodingAgentMetadata: codingAgentMetadata,
-			RequestPayloadHash:  requestPayloadHash,
-			APIKeyService:       h.apiKeyService,
-			QuotaPlatform:       quotaPlatform,
+			APIKey:             apiKey,
+			User:               apiKey.User,
+			Account:            account,
+			Subscription:       subscription,
+			InboundEndpoint:    inboundEndpoint,
+			UpstreamEndpoint:   upstreamEndpoint,
+			UserAgent:          userAgent,
+			IPAddress:          clientIP,
+			SessionID:          sessionID,
+			RequestPayloadHash: requestPayloadHash,
+			APIKeyService:      h.apiKeyService,
+			QuotaPlatform:      quotaPlatform,
 		}); err != nil {
 			logger.L().With(
 				zap.String("component", "handler.gateway.web_search"),

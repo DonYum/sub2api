@@ -186,19 +186,6 @@ type UsageLog struct {
 	// (e.g. the session_id / X-Session-Id headers). Nil when the client sent no
 	// valid session header. It is never derived from prompt_cache_key or content.
 	SessionID *string
-	// Coding-agent terminal observability fields. These are allowlisted request
-	// metadata captured from headers / metadata.user_id / client_metadata only.
-	ClientMachineID     *string
-	ClientMachineSource *string
-	ClientDeviceID      *string
-	ClientAccountUUID   *string
-	ClientOriginator    *string
-	CodexInstallationID *string
-	CodexWindowID       *string
-	CodexSessionID      *string
-	CodexThreadID       *string
-	CodexTurnID         *string
-	TerminalHash        *string
 	// UpstreamRequestID 是直接上游在响应头中声明的请求标识，只读账户
 	// extra.upstream_request_id_header 指定的头；账户未指定头名、WS 轮次
 	// 与上游没有该头的路径为 nil。

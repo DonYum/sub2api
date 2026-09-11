@@ -52,7 +52,6 @@ type RecordUsageInput struct {
 	ForceCacheBilling  bool               // 强制缓存计费：将 input_tokens 转为 cache_read 计费（用于粘性会话切换）
 	APIKeyService      APIKeyQuotaUpdater // 可选：用于更新API Key配额
 	QuotaPlatform      string             // user×platform 配额计量平台：handler 在请求 ctx 内经 QuotaPlatform() 算定后传入（后扣运行在 worker 池 background ctx 上，取不到 ForcePlatform）
-	CodingAgentMetadata
 
 	ChannelUsageFields // 渠道映射信息（由 handler 在 Forward 前解析）
 }
@@ -613,10 +612,9 @@ func (s *GatewayService) RecordUsage(ctx context.Context, input *RecordUsageInpu
 		SessionID:           input.SessionID,
 		RequestPayloadHash:  input.RequestPayloadHash,
 		ForceCacheBilling:   input.ForceCacheBilling,
-		APIKeyService:       input.APIKeyService,
-		QuotaPlatform:       input.QuotaPlatform,
-		CodingAgentMetadata: input.CodingAgentMetadata,
-		ChannelUsageFields:  input.ChannelUsageFields,
+		APIKeyService:      input.APIKeyService,
+		QuotaPlatform:      input.QuotaPlatform,
+		ChannelUsageFields: input.ChannelUsageFields,
 	})
 }
 
@@ -637,7 +635,6 @@ type recordUsageCoreInput struct {
 	ForceCacheBilling  bool
 	APIKeyService      APIKeyQuotaUpdater
 	QuotaPlatform      string
-	CodingAgentMetadata
 	ChannelUsageFields
 }
 
@@ -1194,7 +1191,6 @@ func (s *GatewayService) buildRecordUsageLog(
 		SubscriptionID:           optionalSubscriptionID(subscription),
 		CreatedAt:                time.Now(),
 	}
-	applyCodingAgentMetadataToUsageLog(usageLog, input.CodingAgentMetadata)
 	if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier
 	}
@@ -1210,23 +1206,6 @@ func (s *GatewayService) buildRecordUsageLog(
 	}
 
 	return usageLog
-}
-
-func applyCodingAgentMetadataToUsageLog(log *UsageLog, meta CodingAgentMetadata) {
-	if log == nil {
-		return
-	}
-	log.ClientMachineID = optionalTrimmedStringPtr(meta.ClientMachineID)
-	log.ClientMachineSource = optionalTrimmedStringPtr(meta.ClientMachineSource)
-	log.ClientDeviceID = optionalTrimmedStringPtr(meta.ClientDeviceID)
-	log.ClientAccountUUID = optionalTrimmedStringPtr(meta.ClientAccountUUID)
-	log.ClientOriginator = optionalTrimmedStringPtr(meta.ClientOriginator)
-	log.CodexInstallationID = optionalTrimmedStringPtr(meta.CodexInstallationID)
-	log.CodexWindowID = optionalTrimmedStringPtr(meta.CodexWindowID)
-	log.CodexSessionID = optionalTrimmedStringPtr(meta.CodexSessionID)
-	log.CodexThreadID = optionalTrimmedStringPtr(meta.CodexThreadID)
-	log.CodexTurnID = optionalTrimmedStringPtr(meta.CodexTurnID)
-	log.TerminalHash = optionalTrimmedStringPtr(meta.TerminalHash)
 }
 
 // resolveBillingMode 根据计费结果和请求类型确定计费模式。
