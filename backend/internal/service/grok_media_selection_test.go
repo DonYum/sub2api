@@ -100,11 +100,11 @@ func TestGrokVideoStickySelectionIgnoresHealthEscape(t *testing.T) {
 	selection, escaped, err := scheduler.selectBySessionHash(context.Background(), req)
 	require.NoError(t, err)
 	require.Nil(t, selection)
-	require.True(t, escaped)
+	require.Equal(t, int64(1), escaped)
 	req.DisableStickyEscape = true
 	selection, escaped, err = scheduler.selectBySessionHash(context.Background(), req)
 	require.NoError(t, err)
-	require.False(t, escaped)
+	require.Zero(t, escaped)
 	require.True(t, selection.Acquired)
 	selection.ReleaseFunc()
 }
