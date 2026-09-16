@@ -498,9 +498,10 @@ const modelOptionsForMode = computed(() => {
 
 const supportsPromptInput = computed(() => {
   if (!isGrokAccount.value) {
-    return supportsImageTest.value
+    return true
   }
   return (
+    grokTestMode.value === 'text' ||
     grokTestMode.value === 'image' ||
     grokTestMode.value === 'video' ||
     grokTestMode.value === 'search' ||
@@ -609,7 +610,7 @@ const promptInputLabel = computed(() => {
   if (grokTestMode.value === 'tts') {
     return t('admin.accounts.grok.ttsTextLabel')
   }
-  return t('admin.accounts.imagePromptLabel')
+  return t('admin.accounts.testPromptLabel')
 })
 
 const promptInputPlaceholder = computed(() => {
@@ -625,7 +626,7 @@ const promptInputPlaceholder = computed(() => {
   if (grokTestMode.value === 'tts') {
     return t('admin.accounts.grok.ttsTextPlaceholder')
   }
-  return ''
+  return t('admin.accounts.testPromptPlaceholder')
 })
 
 const promptInputHint = computed(() => {

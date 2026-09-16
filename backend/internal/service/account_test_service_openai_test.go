@@ -704,3 +704,32 @@ func TestAccountTestService_OpenAIChatCompletionsPathRejectsNonJSONStream(t *tes
 	require.Contains(t, recorder.Body.String(), "/v1/chat/completions")
 	require.NotContains(t, recorder.Body.String(), `"success":true`)
 }
+
+func TestCreateOpenAITestPayload_CustomPrompt(t *testing.T) {
+	t.Parallel()
+
+	defaultPayload := createOpenAITestPayload("gpt-5.6", false)
+	require.Equal(t, "hi", defaultPayload["input"].([]map[string]any)[0]["content"].([]map[string]any)[0]["text"])
+
+	customPayload := createOpenAITestPayload("gpt-5.6", false, "ping 123")
+	require.Equal(t, "ping 123", customPayload["input"].([]map[string]any)[0]["content"].([]map[string]any)[0]["text"])
+
+	blankPayload := createOpenAITestPayload("gpt-5.6", false, "   ")
+	require.Equal(t, "hi", blankPayload["input"].([]map[string]any)[0]["content"].([]map[string]any)[0]["text"])
+}
+
+func TestCreateTestPayload_CustomPrompt(t *testing.T) {
+	t.Parallel()
+
+	defaultPayload, err := createTestPayload("claude-3-5-sonnet")
+	require.NoError(t, err)
+	require.Equal(t, "hi", defaultPayload["messages"].([]map[string]any)[0]["content"].([]map[string]any)[0]["text"])
+
+	customPayload, err := createTestPayload("claude-3-5-sonnet", "custom hello")
+	require.NoError(t, err)
+	require.Equal(t, "custom hello", customPayload["messages"].([]map[string]any)[0]["content"].([]map[string]any)[0]["text"])
+
+	blankPayload, err := createTestPayload("claude-3-5-sonnet", "  ")
+	require.NoError(t, err)
+	require.Equal(t, "hi", blankPayload["messages"].([]map[string]any)[0]["content"].([]map[string]any)[0]["text"])
+}

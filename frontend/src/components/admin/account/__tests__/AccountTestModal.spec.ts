@@ -245,4 +245,38 @@ describe('AccountTestModal', () => {
       expect.objectContaining({ id: 'gpt-5.6-chat', display_name: 'GPT 5.6 Chat' })
     ])
   })
+
+  it('文本模式测试允许输入自定义 prompt 并正常发送', async () => {
+    getAvailableModels.mockResolvedValue([
+      { id: 'gpt-5.6-turbo', display_name: 'GPT 5.6 Turbo' }
+    ])
+
+    const wrapper = mountModal({
+      id: 26,
+      name: '147-gpt-AI',
+      platform: 'openai',
+      type: 'oauth',
+      status: 'active'
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const promptInput = wrapper.find('textarea.textarea-stub')
+    expect(promptInput.exists()).toBe(true)
+    await promptInput.setValue('ping test from custom prompt')
+
+    const buttons = wrapper.findAll('button')
+    const startButton = buttons.find((button) => button.text().includes('admin.accounts.startTest'))
+    expect(startButton).toBeTruthy()
+
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    expect(global.fetch).toHaveBeenCalledTimes(1)
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toMatchObject({
+      model_id: 'gpt-5.6-turbo',
+      prompt: 'ping test from custom prompt'
+    })
+  })
 })
