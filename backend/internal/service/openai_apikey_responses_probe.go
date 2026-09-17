@@ -73,25 +73,51 @@ func openaiResponsesProbePayload(modelID string) []byte {
 	return body
 }
 
+// preferredProbeModels 定义用于 Responses 能力探测的优先主流模型列表。
+// 优先使用标准核心文本模型，避免因映射中包含实验性、定制或已下线别名而探测失败。
+var preferredProbeModels = []string{
+	"gpt-5.6",
+	"gpt-5.6-sol",
+	"gpt-5.5",
+	"gpt-5.4",
+	"gpt-5.3-codex",
+	"gpt-4o",
+	"gpt-4o-mini",
+	"gpt-4-turbo",
+	"gpt-4",
+	"gpt-3.5-turbo",
+}
+
 // selectResponsesProbeModel 选出用于探测的上游模型。
 //
 // 工具能力探测必须用上游真实存在的模型——用占位模型(DefaultTestModel)打第三方
-// 上游只会拿到 400 model-not-found,无从判定工具能力。优先取账号 model_mapping
-// 的上游模型(值),按字典序取首个具体(非通配符)模型以保证可复现;无映射时回退
+// 上游只会拿到 400 model-not-found,无从判定工具能力。优先从账号 model_mapping
+// 中选取主流标准模型；若无匹配则按字典序取首个具体(非通配符)模型；无映射时回退
 // DefaultTestModel(适配 OpenAI 官方 APIKey 账号)。
 func selectResponsesProbeModel(account *Account) string {
 	mapping := account.GetModelMapping()
 	candidates := make([]string, 0, len(mapping))
+	candidateSet := make(map[string]struct{}, len(mapping))
 	for _, upstream := range mapping {
 		upstream = strings.TrimSpace(upstream)
 		if upstream == "" || strings.Contains(upstream, "*") {
 			continue
 		}
-		candidates = append(candidates, upstream)
+		if _, exists := candidateSet[upstream]; !exists {
+			candidates = append(candidates, upstream)
+			candidateSet[upstream] = struct{}{}
+		}
 	}
 	if len(candidates) == 0 {
 		return openai.DefaultTestModel
 	}
+
+	for _, preferred := range preferredProbeModels {
+		if _, ok := candidateSet[preferred]; ok {
+			return preferred
+		}
+	}
+
 	sort.Strings(candidates)
 	return candidates[0]
 }
@@ -287,12 +313,32 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 //     预算不足造成的，不是上游能力缺失。
 //   - status=failed：HTTP 200 携带的失败响应（上游瞬时故障）同样不构成能力证据。
 //
+// responsesProbeIsModelNotFound404 判定 404 响应是否由模型不存在引起。
+// 当上游暴露了 /v1/responses 但探测指定的模型未配置或不支持时，上游返回 404
+// 以及明确的模型缺失错误信息。这表明端点路由本身存在，绝不能判定为端点缺失。
+func responsesProbeIsModelNotFound404(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	bodyLower := strings.ToLower(string(body))
+	if strings.Contains(bodyLower, "model_not_found") ||
+		strings.Contains(bodyLower, "does not exist") ||
+		strings.Contains(bodyLower, "is not supported") ||
+		(strings.Contains(bodyLower, "no available") && strings.Contains(bodyLower, "model")) {
+		return true
+	}
+	return false
+}
+
 // 其余 2xx 一律可下结论——尤其 status=completed 却只回 reasoning 的上游（火山方舟
 // coding/v3 × kimi-k2.6），仍按原逻辑判为不支持。
 //
-// 非 2xx 的结论只看状态码、不依赖响应内容，恒可下结论。
-// 缺少 status 字段的响应体（含非 JSON）也按可下结论处理，保持既有行为。
+// 非 2xx 通常只看状态码，但若 404 明细表明是模型不存在（而非端点不存在），则不应
+// 误判为端点缺失，保持 inconclusive（留待下次或保持 unknown）。
 func responsesProbeVerdictIsConclusive(status int, body []byte) bool {
+	if status == http.StatusNotFound && responsesProbeIsModelNotFound404(body) {
+		return false
+	}
 	if status < 200 || status >= 300 {
 		return true
 	}

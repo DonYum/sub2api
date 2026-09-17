@@ -143,6 +143,16 @@ func TestSelectResponsesProbeModel(t *testing.T) {
 	}}
 	require.Equal(t, "alpha-model", selectResponsesProbeModel(acct))
 
+	// Preferred mainstream models take precedence over alphabetical custom models
+	acctPreferred := &Account{Credentials: map[string]any{
+		"model_mapping": map[string]any{
+			"codex-auto-review": "codex-auto-review",
+			"gpt-5.6-sol":       "gpt-5.6-sol",
+			"custom-a":          "custom-a",
+		},
+	}}
+	require.Equal(t, "gpt-5.6-sol", selectResponsesProbeModel(acctPreferred))
+
 	// Wildcard / blank upstream values are skipped.
 	acctWild := &Account{Credentials: map[string]any{
 		"model_mapping": map[string]any{

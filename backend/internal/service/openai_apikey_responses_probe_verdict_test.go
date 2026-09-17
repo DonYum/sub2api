@@ -189,8 +189,10 @@ func TestResponsesProbeVerdictIsConclusive(t *testing.T) {
 		{"200_no_status_field", 200, `{"output":[]}`, true},
 		{"200_non_json", 200, `not-json`, true},
 		{"200_empty_body", 200, ``, true},
-		// 非 2xx 只看状态码，不读 body。
+		// 非 2xx 通常看状态码，但模型缺失的 404 不作结论（保持 unknown）。
 		{"404_ignores_body_status", 404, `{"status":"failed"}`, true},
+		{"404_model_not_found_is_inconclusive", 404, `{"error":{"message":"The model does not exist","code":"model_not_found"}}`, false},
+		{"404_sub2api_model_not_supported_is_inconclusive", 404, `{"error":"no available accounts supporting model: codex-auto-review"}`, false},
 		{"500_ignores_body_status", 500, `{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}`, true},
 	}
 
