@@ -155,6 +155,18 @@ func TestProbeOpenAIAPIKeyResponsesSupport_ConclusiveResponsesStillPersist(t *te
 			want:   false,
 		},
 		{
+			name:   "endpoint_absent_404_does_not_exist",
+			status: http.StatusNotFound,
+			body:   `The requested endpoint does not exist`,
+			want:   false,
+		},
+		{
+			name:   "endpoint_absent_404_not_supported",
+			status: http.StatusNotFound,
+			body:   `/v1/responses is not supported`,
+			want:   false,
+		},
+		{
 			// 非 2xx 的结论只看状态码：body 里的 status=failed 不该让它变成"不下结论"。
 			name:   "server_error_stays_conservative_true",
 			status: http.StatusInternalServerError,
@@ -189,10 +201,14 @@ func TestResponsesProbeVerdictIsConclusive(t *testing.T) {
 		{"200_no_status_field", 200, `{"output":[]}`, true},
 		{"200_non_json", 200, `not-json`, true},
 		{"200_empty_body", 200, ``, true},
-		// 非 2xx 通常看状态码，但模型缺失的 404 不作结论（保持 unknown）。
+		// 非 2xx 通常看状态码，但明确指向模型缺失的 404 不作结论（保持 unknown）。
 		{"404_ignores_body_status", 404, `{"status":"failed"}`, true},
 		{"404_model_not_found_is_inconclusive", 404, `{"error":{"message":"The model does not exist","code":"model_not_found"}}`, false},
 		{"404_sub2api_model_not_supported_is_inconclusive", 404, `{"error":"no available accounts supporting model: codex-auto-review"}`, false},
+		// 端点缺失报错必须维持 conclusive（落标 supported=false），不能被误判为模型缺失
+		{"404_endpoint_does_not_exist_is_conclusive", 404, `The requested endpoint does not exist`, true},
+		{"404_endpoint_not_supported_is_conclusive", 404, `/v1/responses is not supported`, true},
+		{"404_route_not_found_is_conclusive", 404, `Cannot POST /v1/responses`, true},
 		{"500_ignores_body_status", 500, `{"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"}}`, true},
 	}
 

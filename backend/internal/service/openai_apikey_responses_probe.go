@@ -316,16 +316,47 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 // responsesProbeIsModelNotFound404 判定 404 响应是否由模型不存在引起。
 // 当上游暴露了 /v1/responses 但探测指定的模型未配置或不支持时，上游返回 404
 // 以及明确的模型缺失错误信息。这表明端点路由本身存在，绝不能判定为端点缺失。
+// 注意：必须明确指向模型缺失，不能匹配端点缺失报错（如 endpoint does not exist / /v1/responses is not supported）。
 func responsesProbeIsModelNotFound404(body []byte) bool {
 	if len(body) == 0 {
 		return false
 	}
-	bodyLower := strings.ToLower(string(body))
-	if strings.Contains(bodyLower, "model_not_found") ||
-		strings.Contains(bodyLower, "does not exist") ||
-		strings.Contains(bodyLower, "is not supported") ||
-		(strings.Contains(bodyLower, "no available") && strings.Contains(bodyLower, "model")) {
+	// 优先检查结构化错误码或参数
+	errCode := strings.TrimSpace(gjson.GetBytes(body, "error.code").String())
+	if errCode == "model_not_found" {
 		return true
+	}
+	errParam := strings.TrimSpace(gjson.GetBytes(body, "error.param").String())
+	if errParam == "model" {
+		return true
+	}
+
+	bodyLower := strings.ToLower(string(body))
+
+	// 若包含端点、路由或路径缺失短语，明确属于端点不存在，绝不能判定为模型错误
+	if strings.Contains(bodyLower, "endpoint") ||
+		strings.Contains(bodyLower, "route") ||
+		strings.Contains(bodyLower, "/v1/responses") ||
+		strings.Contains(bodyLower, "/responses") ||
+		strings.Contains(bodyLower, "page not found") {
+		return false
+	}
+
+	if strings.Contains(bodyLower, "model_not_found") {
+		return true
+	}
+
+	// 文本提示必须明确绑定 model 与缺失/不支持语义
+	if strings.Contains(bodyLower, "model") {
+		if strings.Contains(bodyLower, "does not exist") ||
+			strings.Contains(bodyLower, "not supported") ||
+			strings.Contains(bodyLower, "unsupported") ||
+			strings.Contains(bodyLower, "not found") ||
+			strings.Contains(bodyLower, "unknown") ||
+			strings.Contains(bodyLower, "invalid") ||
+			(strings.Contains(bodyLower, "no available") && strings.Contains(bodyLower, "account")) {
+			return true
+		}
 	}
 	return false
 }
