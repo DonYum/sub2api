@@ -218,3 +218,15 @@ func TestResponsesProbeVerdictIsConclusive(t *testing.T) {
 		})
 	}
 }
+
+func TestReview222R2ModelErrorWithEndpointContext(t *testing.T) {
+	for _, body := range []string{
+		`{"error":{"message":"no available OpenAI accounts supporting model: codex-auto-review"},"path":"/v1/responses"}`,
+		`{"error":{"message":"The model foo is not supported on this endpoint"}}`,
+		`{"error":{"message":"no available OpenAI accounts supporting model: router-model"}}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			require.Nil(t, runResponsesProbe(t, http.StatusNotFound, body), "model failure is not endpoint absence")
+		})
+	}
+}

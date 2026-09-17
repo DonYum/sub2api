@@ -316,12 +316,12 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 // responsesProbeIsModelNotFound404 判定 404 响应是否由模型不存在引起。
 // 当上游暴露了 /v1/responses 但探测指定的模型未配置或不支持时，上游返回 404
 // 以及明确的模型缺失错误信息。这表明端点路由本身存在，绝不能判定为端点缺失。
-// 注意：必须明确指向模型缺失，不能匹配端点缺失报错（如 endpoint does not exist / /v1/responses is not supported）。
+// 注意：必须从错误消息中严格识别模型缺失语义，不能误伤端点缺失报错或携带请求路径的合法模型报错。
 func responsesProbeIsModelNotFound404(body []byte) bool {
 	if len(body) == 0 {
 		return false
 	}
-	// 优先检查结构化错误码或参数
+	// 1. 优先检查结构化错误码或参数
 	errCode := strings.TrimSpace(gjson.GetBytes(body, "error.code").String())
 	if errCode == "model_not_found" {
 		return true
@@ -331,30 +331,29 @@ func responsesProbeIsModelNotFound404(body []byte) bool {
 		return true
 	}
 
-	bodyLower := strings.ToLower(string(body))
-
-	// 若包含端点、路由或路径缺失短语，明确属于端点不存在，绝不能判定为模型错误
-	if strings.Contains(bodyLower, "endpoint") ||
-		strings.Contains(bodyLower, "route") ||
-		strings.Contains(bodyLower, "/v1/responses") ||
-		strings.Contains(bodyLower, "/responses") ||
-		strings.Contains(bodyLower, "page not found") {
-		return false
+	// 2. 提取具体的错误描述文本（优先取 error.message，其次 error 字段，最后取正文）
+	errMsg := gjson.GetBytes(body, "error.message").String()
+	if errMsg == "" {
+		errMsg = gjson.GetBytes(body, "error").String()
+	}
+	if errMsg == "" {
+		errMsg = string(body)
 	}
 
-	if strings.Contains(bodyLower, "model_not_found") {
+	msgLower := strings.ToLower(errMsg)
+	if strings.Contains(msgLower, "model_not_found") {
 		return true
 	}
 
-	// 文本提示必须明确绑定 model 与缺失/不支持语义
-	if strings.Contains(bodyLower, "model") {
-		if strings.Contains(bodyLower, "does not exist") ||
-			strings.Contains(bodyLower, "not supported") ||
-			strings.Contains(bodyLower, "unsupported") ||
-			strings.Contains(bodyLower, "not found") ||
-			strings.Contains(bodyLower, "unknown") ||
-			strings.Contains(bodyLower, "invalid") ||
-			(strings.Contains(bodyLower, "no available") && strings.Contains(bodyLower, "account")) {
+	// 错误描述必须明确包含 "model"，方可能为模型错误（端点缺失如 404 Not Found / endpoint does not exist 均不含 model）
+	if strings.Contains(msgLower, "model") {
+		if strings.Contains(msgLower, "does not exist") ||
+			strings.Contains(msgLower, "not supported") ||
+			strings.Contains(msgLower, "unsupported") ||
+			strings.Contains(msgLower, "not found") ||
+			strings.Contains(msgLower, "unknown") ||
+			strings.Contains(msgLower, "invalid") ||
+			(strings.Contains(msgLower, "no available") && strings.Contains(msgLower, "account")) {
 			return true
 		}
 	}
