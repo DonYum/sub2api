@@ -195,6 +195,11 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 		return s.sendErrorAndEnd(c, errMsg)
 	}
 
+	contentType := resp.Header.Get("Content-Type")
+	if contentType != "" && !strings.Contains(strings.ToLower(contentType), "text/event-stream") {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Adaptive Responses endpoint returned unexpected content-type: %s (expected text/event-stream)", contentType))
+	}
+
 	if err := s.processOpenAIStream(c, resp.Body); err != nil {
 		return err
 	}

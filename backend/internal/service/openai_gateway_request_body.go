@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
@@ -50,11 +51,20 @@ func buildOpenAIResponsesURL(base string) string {
 	return buildOpenAIEndpointURL(base, "/v1/responses")
 }
 
+func isOfficialDeepSeekBaseURL(raw string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return false
+	}
+	hostname := strings.TrimSuffix(parsed.Hostname(), ".")
+	return strings.EqualFold(hostname, "api.deepseek.com")
+}
+
 // buildOpenAIResponsesURLForPlatform 组装 Responses 端点（平台感知）。
-// DeepSeek 官方 Responses 端点为 /responses（无 /v1 前缀，适配 Codex）；
-// 其余平台维持 /v1/responses。
+// 仅 DeepSeek 官方端点（api.deepseek.com）为 /responses（无 /v1 前缀，适配 Codex）；
+// 第三方 DeepSeek 代理/中转站及其他平台均维持标准的 /v1/responses。
 func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
-	if platform == PlatformDeepseek {
+	if platform == PlatformDeepseek && isOfficialDeepSeekBaseURL(base) {
 		return buildOpenAIEndpointURL(base, "/responses")
 	}
 	return buildOpenAIResponsesURL(base)

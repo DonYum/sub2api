@@ -290,3 +290,52 @@ func TestAccountTestService_AnthropicProtocol401MarksAccountError(t *testing.T) 
 	repo := svc.accountRepo.(*openAIAccountTestRepo)
 	require.Equal(t, account.ID, repo.setErrorID)
 }
+
+func TestAccountTestService_AdaptiveResponsesThirdPartyDeepSeekUsesV1Responses(t *testing.T) {
+	account := adaptiveCNAccountTestAccount(315, PlatformDeepseek)
+	account.Credentials["api_base_urls"] = map[string]any{
+		APIProtocolChatCompletions: "https://api.147ai.cn",
+		APIProtocolAnthropic:       "https://api.147ai.cn",
+		APIProtocolResponses:       "https://api.147ai.cn",
+	}
+	svc, upstream := adaptiveCNAccountTestService(
+		account,
+		adaptiveCNChatTestResponse(),
+		adaptiveCNAnthropicTestResponse(),
+		adaptiveCNResponsesTestResponse(),
+	)
+	c, _ := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "deepseek-v4.1-flash", "", AccountTestModeDefault)
+
+	require.NoError(t, err)
+	require.Len(t, upstream.requests, 3)
+	require.Equal(t, "https://api.147ai.cn/v1/responses", upstream.requests[2].URL.String())
+}
+
+func TestAccountTestService_AdaptiveResponsesRejectsNonSSEContentType(t *testing.T) {
+	account := adaptiveCNAccountTestAccount(316, PlatformDeepseek)
+	account.Credentials["api_base_urls"] = map[string]any{
+		APIProtocolChatCompletions: "https://api.147ai.cn",
+		APIProtocolAnthropic:       "https://api.147ai.cn",
+		APIProtocolResponses:       "https://api.147ai.cn",
+	}
+	htmlResponse := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
+		Body:       io.NopCloser(strings.NewReader(`<!doctype html><html><body>SPA</body></html>`)),
+	}
+	svc, upstream := adaptiveCNAccountTestService(
+		account,
+		adaptiveCNChatTestResponse(),
+		adaptiveCNAnthropicTestResponse(),
+		htmlResponse,
+	)
+	c, recorder := newTestContext()
+
+	err := svc.TestAccountConnection(c, account.ID, "deepseek-v4.1-flash", "", AccountTestModeDefault)
+
+	require.Error(t, err)
+	require.Len(t, upstream.requests, 3)
+	require.Contains(t, recorder.Body.String(), "unexpected content-type: text/html; charset=utf-8")
+}
