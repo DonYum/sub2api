@@ -45,7 +45,7 @@ type directoryHandlerKeys struct{ service.APIKeyRepository }
 func (s *directoryHandlerKeys) ListByUserID(_ context.Context, id int64, p pagination.PaginationParams, f service.APIKeyListFilters) ([]service.APIKey, *pagination.PaginationResult, error) {
 	rows := []service.APIKey{}
 	if id == 7 && (f.ExactName == nil || *f.ExactName == "my-key") && (f.ID == nil || *f.ID == 70) {
-		rows = append(rows, service.APIKey{ID: 70, UserID: 7, Name: "my-key", Key: "returned-secret", Status: "active"})
+		rows = append(rows, service.APIKey{ID: 70, UserID: 7, Name: "my-key", Key: "returned-secret", Status: "active", Group: &service.Group{Platform: service.PlatformOpenAI, ModelAllowlist: service.GroupModelAllowlist{Enabled: true, Models: []string{"gpt-5.6-sol"}}}})
 	}
 	return rows, &pagination.PaginationResult{Total: int64(len(rows))}, nil
 }
@@ -104,6 +104,8 @@ func TestKeyDirectoryHTTPContractAndAudit(t *testing.T) {
 			if tc.secret {
 				require.Contains(t, w.Body.String(), "returned-secret")
 				require.Contains(t, w.Body.String(), `"base_url":"https://gateway.example"`)
+				require.Contains(t, w.Body.String(), `"model_names":["gpt-5.6-sol"]`)
+				require.Contains(t, w.Body.String(), `"protocols":["openai_responses","openai_chat_completions"]`)
 			} else {
 				require.NotContains(t, w.Body.String(), "returned-secret")
 			}

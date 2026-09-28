@@ -131,6 +131,7 @@ func TestKeyDirectoryExpiredAndStorageFailure(t *testing.T) {
 func TestKeyDirectoryResolveIsolationAndAmbiguity(t *testing.T) {
 	ctx := context.Background()
 	s, _, _, keys := newDirectoryTestService()
+	keys.rows[0].Group = &Group{Platform: PlatformOpenAI, ModelAllowlist: GroupModelAllowlist{Enabled: true, Models: []string{"gpt-5.6-sol"}}}
 	list, _, err := s.List(ctx, 1, pagination.PaginationParams{Page: 1, PageSize: 100})
 	require.NoError(t, err)
 	require.Len(t, list, 1)
@@ -141,6 +142,8 @@ func TestKeyDirectoryResolveIsolationAndAmbiguity(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "secret-a", conn.Token)
 	require.Equal(t, "https://gateway.example", conn.BaseURL)
+	require.Equal(t, []string{"gpt-5.6-sol"}, conn.ModelNames)
+	require.Equal(t, []string{"openai_responses", "openai_chat_completions"}, conn.Protocols)
 	require.EqualValues(t, 1, keys.owner)
 	otherID := int64(21)
 	_, err = s.Resolve(ctx, 1, "alpha", &otherID)

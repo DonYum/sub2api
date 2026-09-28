@@ -122,9 +122,38 @@ type KeyDirectoryEntry struct {
 
 type KeyDirectoryConnection struct {
 	KeyDirectoryEntry
-	Token     string     `json:"api_key_token"`
-	BaseURL   string     `json:"base_url"`
-	ExpiresAt *time.Time `json:"expires_at"`
+	Token      string     `json:"api_key_token"`
+	BaseURL    string     `json:"base_url"`
+	ExpiresAt  *time.Time `json:"expires_at"`
+	ModelNames []string   `json:"model_names"`
+	Protocols  []string   `json:"protocols"`
+}
+
+// directoryConnectionMetadata is deliberately derived from the key's group,
+// rather than guessed from api_key_name. A nil ModelNames means the group has
+// no model allowlist and therefore permits the platform's model set.
+func directoryConnectionMetadata(key APIKey) ([]string, []string) {
+	if key.Group == nil {
+		return nil, nil
+	}
+	var models []string
+	if key.Group.ModelAllowlist.Enabled {
+		models = append([]string(nil), key.Group.ModelAllowlist.Models...)
+	}
+	var protocols []string
+	switch key.Group.Platform {
+	case PlatformAnthropic:
+		protocols = []string{"anthropic_messages"}
+	case PlatformOpenAI:
+		protocols = []string{"openai_responses", "openai_chat_completions"}
+	case PlatformGemini:
+		protocols = []string{"gemini_generate_content"}
+	default:
+		// Other groups are OpenAI-compatible at the gateway boundary, but
+		// their upstream protocol may vary by account and request.
+		protocols = []string{"openai_chat_completions"}
+	}
+	return models, protocols
 }
 
 func (s *KeyDirectoryService) List(ctx context.Context, userID int64, params pagination.PaginationParams) ([]KeyDirectoryEntry, *pagination.PaginationResult, error) {
@@ -165,5 +194,13 @@ func (s *KeyDirectoryService) Resolve(ctx context.Context, userID int64, name st
 		return nil, infraerrors.ServiceUnavailable("DIRECTORY_BASE_URL_UNCONFIGURED", "configure a valid public api_base_url before resolving keys")
 	}
 	key := keys[0]
-	return &KeyDirectoryConnection{KeyDirectoryEntry: KeyDirectoryEntry{ID: key.ID, Name: key.Name, Status: key.Status}, Token: key.Key, BaseURL: base, ExpiresAt: key.ExpiresAt}, nil
+	models, protocols := directoryConnectionMetadata(key)
+	return &KeyDirectoryConnection{
+		KeyDirectoryEntry: KeyDirectoryEntry{ID: key.ID, Name: key.Name, Status: key.Status},
+		Token:             key.Key,
+		BaseURL:           base,
+		ExpiresAt:         key.ExpiresAt,
+		ModelNames:        models,
+		Protocols:         protocols,
+	}, nil
 }
