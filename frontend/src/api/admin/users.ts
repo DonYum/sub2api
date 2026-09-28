@@ -404,7 +404,24 @@ export async function resetPlatformQuotaWindow(
   return data
 }
 
+export interface KeyDirectoryCredential {
+  user_id: number
+  credential: string
+  expires_at: string | null
+}
+
+export async function rotateKeyDirectoryCredential(id: number, expiresAt: string | null): Promise<KeyDirectoryCredential> {
+  const { data } = await apiClient.post<KeyDirectoryCredential>(`/admin/users/${id}/key-directory-credential`, { expires_at: expiresAt })
+  return data
+}
+
+export async function revokeKeyDirectoryCredential(id: number): Promise<void> {
+  await apiClient.delete(`/admin/users/${id}/key-directory-credential`)
+}
+
 export const usersAPI = {
+  rotateKeyDirectoryCredential,
+  revokeKeyDirectoryCredential,
   list,
   getById,
   create,

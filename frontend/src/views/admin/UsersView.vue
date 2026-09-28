@@ -692,6 +692,14 @@
                 {{ t('admin.users.apiKeys') }}
               </button>
 
+              <button
+                @click="keyDirectoryUser = user; closeActionMenu()"
+                class="flex w-full items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
+              >
+                <Icon name="key" size="sm" class="text-gray-400" :stroke-width="2" />
+                {{ t('admin.users.keyDirectory.title') }}
+              </button>
+
               <!-- Allowed Groups -->
               <button
                 @click="handleAllowedGroups(user); closeActionMenu()"
@@ -768,6 +776,7 @@
       @confirm="confirmBulkDelete"
       @cancel="bulkDeleteIds = []"
     />
+    <UserKeyDirectoryModal :show="keyDirectoryUser !== null" :user="keyDirectoryUser" @close="keyDirectoryUser = null" />
     <UserCreateModal :show="showCreateModal" @close="showCreateModal = false" @success="loadUsers" />
     <UserEditModal :show="showEditModal" :user="editingUser" @close="closeEditModal" @success="loadUsers" />
     <BulkEditUserModal
@@ -821,6 +830,7 @@ import UserConcurrencyCell from '@/components/user/UserConcurrencyCell.vue'
 import PlatformUsageBreakdown from '@/components/user/PlatformUsageBreakdown.vue'
 import PlatformCostCell from '@/components/user/PlatformCostCell.vue'
 import UserPlatformQuotaCell from '@/components/user/UserPlatformQuotaCell.vue'
+import UserKeyDirectoryModal from '@/components/admin/user/UserKeyDirectoryModal.vue'
 import UserCreateModal from '@/components/admin/user/UserCreateModal.vue'
 import UserEditModal from '@/components/admin/user/UserEditModal.vue'
 import BulkEditUserModal from '@/components/admin/user/BulkEditUserModal.vue'
@@ -1339,6 +1349,7 @@ const pagination = reactive({
   pages: 0
 })
 
+const keyDirectoryUser = ref<AdminUser | null>(null)
 const showCreateModal = ref(false)
 const showEditModal = ref(false)
 const showBulkEditModal = ref(false)
