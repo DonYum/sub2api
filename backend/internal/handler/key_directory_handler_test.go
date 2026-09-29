@@ -104,6 +104,8 @@ func TestKeyDirectoryHTTPContractAndAudit(t *testing.T) {
 			if tc.secret {
 				require.Contains(t, w.Body.String(), "returned-secret")
 				require.Contains(t, w.Body.String(), `"base_url":"https://gateway.example"`)
+				require.Contains(t, w.Body.String(), `"platform":"openai"`)
+				require.Contains(t, w.Body.String(), `"type":"api_key"`)
 				require.Contains(t, w.Body.String(), `"model_names":["gpt-5.6-sol"]`)
 				require.Contains(t, w.Body.String(), `"protocols":["openai_responses","openai_chat_completions"]`)
 			} else {

@@ -142,6 +142,8 @@ func TestKeyDirectoryResolveIsolationAndAmbiguity(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "secret-a", conn.Token)
 	require.Equal(t, "https://gateway.example", conn.BaseURL)
+	require.Equal(t, PlatformOpenAI, conn.Platform)
+	require.Equal(t, "api_key", conn.Type)
 	require.Equal(t, []string{"gpt-5.6-sol"}, conn.ModelNames)
 	require.Equal(t, []string{"openai_responses", "openai_chat_completions"}, conn.Protocols)
 	require.EqualValues(t, 1, keys.owner)

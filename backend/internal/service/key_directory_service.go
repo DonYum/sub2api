@@ -125,6 +125,8 @@ type KeyDirectoryConnection struct {
 	Token      string     `json:"api_key_token"`
 	BaseURL    string     `json:"base_url"`
 	ExpiresAt  *time.Time `json:"expires_at"`
+	Platform   string     `json:"platform"`
+	Type       string     `json:"type"`
 	ModelNames []string   `json:"model_names"`
 	Protocols  []string   `json:"protocols"`
 }
@@ -195,11 +197,17 @@ func (s *KeyDirectoryService) Resolve(ctx context.Context, userID int64, name st
 	}
 	key := keys[0]
 	models, protocols := directoryConnectionMetadata(key)
+	platform := ""
+	if key.Group != nil {
+		platform = key.Group.Platform
+	}
 	return &KeyDirectoryConnection{
 		KeyDirectoryEntry: KeyDirectoryEntry{ID: key.ID, Name: key.Name, Status: key.Status},
 		Token:             key.Key,
 		BaseURL:           base,
 		ExpiresAt:         key.ExpiresAt,
+		Platform:          platform,
+		Type:              "api_key",
 		ModelNames:        models,
 		Protocols:         protocols,
 	}, nil
