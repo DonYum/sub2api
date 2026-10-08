@@ -455,6 +455,7 @@ const loadModelStats = async (source: ModelDistributionSource, force = false) =>
       native_compaction_v2: filters.value.native_compaction_v2,
       billing_type: filters.value.billing_type,
 	  upstream_model_mismatch: filters.value.upstream_model_mismatch,
+      reasoning_effort: filters.value.reasoning_effort,
     }
 
     const response = await adminAPI.dashboard.getModelStats({ ...baseParams, model_source: source })
@@ -506,6 +507,7 @@ const loadChartData = async () => {
       native_compaction_v2: filters.value.native_compaction_v2,
       billing_type: filters.value.billing_type,
 	  upstream_model_mismatch: filters.value.upstream_model_mismatch,
+      reasoning_effort: filters.value.reasoning_effort,
       include_stats: false,
       include_trend: true,
       include_model_stats: false,
