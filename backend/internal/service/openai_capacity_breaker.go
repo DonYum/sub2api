@@ -10,7 +10,7 @@ import (
 
 const (
 	OpenAICapacityBreakerExtraKey = "openai_capacity_breaker"
-	openAICapacityBreakerWindow   = 30 * time.Minute
+	openAICapacityBreakerWindow   = 5 * time.Minute
 )
 
 type OpenAICapacityBreakerModelState struct {
@@ -104,22 +104,18 @@ func NextOpenAICapacityBreakerState(existing OpenAICapacityBreakerModelState, no
 
 	switch level {
 	case 1:
-		until := now.Add(30 * time.Minute)
+		until := now.Add(1 * time.Minute)
 		updated.DisabledUntil = until.Format(time.RFC3339)
 		decision.Until = &until
 	case 2:
-		until := now.Add(time.Hour)
-		updated.DisabledUntil = until.Format(time.RFC3339)
-		decision.Until = &until
-	case 3:
-		until := now.Add(2 * time.Hour)
+		until := now.Add(2 * time.Minute)
 		updated.DisabledUntil = until.Format(time.RFC3339)
 		decision.Until = &until
 	default:
-		updated.Level = 4
-		updated.Permanent = true
-		decision.Level = 4
-		decision.Permanent = true
+		// 封顶 3 分钟，彻底取消永久停调，波动过后自动恢复调度
+		until := now.Add(3 * time.Minute)
+		updated.DisabledUntil = until.Format(time.RFC3339)
+		decision.Until = &until
 	}
 	return updated, decision
 }

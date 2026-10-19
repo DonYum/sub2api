@@ -1158,64 +1158,6 @@ func (s *AccountRepoSuite) TestApplyOpenAICapacityBreaker_ModelLimitAndReset() {
 	s.Require().NotContains(got.Extra, service.OpenAICapacityBreakerExtraKey)
 }
 
-func (s *AccountRepoSuite) TestApplyOpenAICapacityBreaker_PermanentSetSchedulableClearsReason() {
-	group := mustCreateGroup(s.T(), s.client, &service.Group{Name: "g-openai-capacity-permanent"})
-	target := mustCreateAccount(s.T(), s.client, &service.Account{
-		Name:        "acc-openai-capacity-permanent-target",
-		Platform:    service.PlatformOpenAI,
-		Type:        service.AccountTypeOAuth,
-		Status:      service.StatusActive,
-		Schedulable: true,
-		Credentials: map[string]any{},
-		Extra:       map[string]any{"model_mapping": map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"}},
-	})
-	peer := mustCreateAccount(s.T(), s.client, &service.Account{
-		Name:        "acc-openai-capacity-permanent-peer",
-		Platform:    service.PlatformOpenAI,
-		Type:        service.AccountTypeOAuth,
-		Status:      service.StatusActive,
-		Schedulable: true,
-		Credentials: map[string]any{},
-		Extra:       map[string]any{},
-	})
-	s.Require().NoError(s.repo.BindGroups(s.ctx, target.ID, []int64{group.ID}))
-	s.Require().NoError(s.repo.BindGroups(s.ctx, peer.ID, []int64{group.ID}))
-
-	start := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
-	var decision *service.OpenAICapacityBreakerDecision
-	for _, at := range []time.Time{
-		start,
-		start.Add(59 * time.Minute),
-		start.Add(120 * time.Minute),
-		start.Add(241 * time.Minute),
-	} {
-		var err error
-		decision, err = s.repo.ApplyOpenAICapacityBreaker(s.ctx, service.OpenAICapacityBreakerApplyInput{
-			AccountID:      target.ID,
-			GroupID:        group.ID,
-			Model:          "gpt-5.6-sol",
-			Now:            at,
-			StatusCode:     http.StatusServiceUnavailable,
-			Message:        "Our servers are currently overloaded. Please try again later.",
-			PeerAccountIDs: []int64{peer.ID},
-		})
-		s.Require().NoError(err)
-		s.Require().True(decision.Applied)
-	}
-	s.Require().True(decision.Permanent)
-
-	got, err := s.repo.GetByID(s.ctx, target.ID)
-	s.Require().NoError(err)
-	s.Require().False(got.Schedulable)
-	s.Require().Contains(got.Extra, service.OpenAICapacityBreakerExtraKey)
-
-	s.Require().NoError(s.repo.SetSchedulable(s.ctx, target.ID, true))
-	got, err = s.repo.GetByID(s.ctx, target.ID)
-	s.Require().NoError(err)
-	s.Require().True(got.Schedulable)
-	s.Require().NotContains(got.Extra, service.OpenAICapacityBreakerExtraKey)
-}
-
 func (s *AccountRepoSuite) TestApplyOpenAICapacityBreaker_PoolFloorSkipsWrite() {
 	target := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "acc-openai-capacity-floor",

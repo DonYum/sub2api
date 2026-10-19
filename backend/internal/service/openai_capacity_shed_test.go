@@ -388,26 +388,28 @@ func TestOpenAICapacityBreakerStateLadder(t *testing.T) {
 	require.False(t, decision.Permanent)
 	require.Equal(t, 1, decision.Level)
 	require.NotNil(t, decision.Until)
-	require.Equal(t, now.Add(30*time.Minute), *decision.Until)
+	require.Equal(t, now.Add(1*time.Minute), *decision.Until)
 	require.Equal(t, "server_is_overloaded", state.Reason)
 
-	state, decision = NextOpenAICapacityBreakerState(state, now.Add(59*time.Minute), http.StatusServiceUnavailable, "again")
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(61*time.Second), http.StatusServiceUnavailable, "again")
 	require.True(t, decision.Applied)
 	require.Equal(t, 2, decision.Level)
 	require.NotNil(t, decision.Until)
-	require.Equal(t, now.Add(119*time.Minute), *decision.Until)
+	require.Equal(t, now.Add(61*time.Second+2*time.Minute), *decision.Until)
 
-	state, decision = NextOpenAICapacityBreakerState(state, now.Add(120*time.Minute), http.StatusServiceUnavailable, "again")
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(182*time.Second), http.StatusServiceUnavailable, "again")
 	require.True(t, decision.Applied)
 	require.Equal(t, 3, decision.Level)
 	require.NotNil(t, decision.Until)
-	require.Equal(t, now.Add(240*time.Minute), *decision.Until)
+	require.Equal(t, now.Add(182*time.Second+3*time.Minute), *decision.Until)
 
-	state, decision = NextOpenAICapacityBreakerState(state, now.Add(241*time.Minute), http.StatusServiceUnavailable, "again")
+	// Level 4 封顶 3 分钟短退避，彻底取消永久停调
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(363*time.Second), http.StatusServiceUnavailable, "again")
 	require.True(t, decision.Applied)
-	require.True(t, decision.Permanent)
+	require.False(t, decision.Permanent)
 	require.Equal(t, 4, decision.Level)
-	require.True(t, state.Permanent)
+	require.False(t, state.Permanent)
+	require.Equal(t, now.Add(363*time.Second+3*time.Minute), *decision.Until)
 }
 
 func TestOpenAICapacityBreakerStateResetsAfterStableWindow(t *testing.T) {
@@ -415,15 +417,17 @@ func TestOpenAICapacityBreakerStateResetsAfterStableWindow(t *testing.T) {
 	state, decision := NextOpenAICapacityBreakerState(OpenAICapacityBreakerModelState{}, now, http.StatusServiceUnavailable, "first")
 	require.Equal(t, 1, decision.Level)
 
-	state, decision = NextOpenAICapacityBreakerState(state, now.Add(59*time.Minute), http.StatusServiceUnavailable, "second")
+	state, decision = NextOpenAICapacityBreakerState(state, now.Add(61*time.Second), http.StatusServiceUnavailable, "second")
 	require.Equal(t, 2, decision.Level)
 
-	state, decision = NextOpenAICapacityBreakerState(state, now.Add(2*time.Hour+31*time.Minute), http.StatusServiceUnavailable, "stable reset")
+	// 稳定窗口 5 分钟后重置
+	resetAt := now.Add(61*time.Second + 2*time.Minute + 5*time.Minute + 1*time.Second)
+	state, decision = NextOpenAICapacityBreakerState(state, resetAt, http.StatusServiceUnavailable, "stable reset")
 	require.True(t, decision.Applied)
 	require.Equal(t, 1, decision.Level)
 	require.False(t, state.Permanent)
 	require.NotNil(t, decision.Until)
-	require.Equal(t, now.Add(3*time.Hour+1*time.Minute), *decision.Until)
+	require.Equal(t, resetAt.Add(1*time.Minute), *decision.Until)
 }
 
 func TestOpenAICapacityBreakerStateSkipsActiveDisableAndPermanent(t *testing.T) {
