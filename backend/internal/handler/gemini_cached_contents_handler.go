@@ -275,7 +275,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 				Model: modelName, UpstreamModel: mappedModel,
 				Usage: service.ClaudeUsage{InputTokens: int(tokens)}, CacheStorageTokenHours: storageTokenHours,
 			},
-			APIKey: apiKey, User: apiKey.User, Subscription: subscription, PricingAt: pricingAt, ChannelUsageFields: usageFields,
+			APIKey: apiKey, User: apiKey.User, Account: account, Subscription: subscription, PricingAt: pricingAt, ChannelUsageFields: usageFields,
 		})
 		inflightRelease()
 		chargeDone, err := h.reserveGeminiCachedContentCharge(c, apiKey, subscription, amount)
@@ -437,7 +437,7 @@ func (h *GatewayHandler) GeminiCachedContentsPatch(c *gin.Context) {
 				Model: record.Model, UpstreamModel: record.UpstreamModelID(),
 				CacheStorageTokenHours: service.GeminiCachedContentStorageTokenHours(record.TotalTokenCount, extension),
 			},
-			APIKey: apiKey, User: apiKey.User, Subscription: subscription, PricingAt: pricingAt,
+			APIKey: apiKey, User: apiKey.User, Account: account, Subscription: subscription, PricingAt: pricingAt,
 			ChannelUsageFields: record.ChannelUsage,
 		}
 		if !h.gatewayService.CacheStoragePriced(c.Request.Context(), usage) {

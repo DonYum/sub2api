@@ -451,7 +451,7 @@ func TestGeminiCachedContentStorageCostInAccountStats(t *testing.T) {
 
 			wantTotal := float64(tc.tokens)*inputPrice + storage
 			require.InDelta(t, wantTotal, log.TotalCost, 1e-12)
-			require.InDelta(t, wantTotal*groupRate, log.ActualCost, 1e-12, "售价 = 官方价 × 分组倍率")
+			require.InDelta(t, wantTotal*groupRate*accountRate, log.ActualCost, 1e-12, "售价 = 官方价 × 分组倍率")
 
 			statsCost := log.TotalCost
 			if log.AccountStatsCost != nil {

@@ -64,9 +64,15 @@ func isOfficialDeepSeekBaseURL(raw string) bool {
 }
 
 // buildOpenAIResponsesURLForPlatform 组装 Responses 端点（平台感知）。
-// 供应商 profile 声明了 ResponsesPath 时按其拼接（如 DeepSeek 为无 /v1 前缀的
-// /responses）；其余平台维持 /v1/responses。
+// 仅 DeepSeek 官方端点（api.deepseek.com）为 /responses（无 /v1 前缀，适配 Codex）；
+// 第三方 DeepSeek 代理/中转站及其他平台均维持标准的 /v1/responses。
 func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
+	if platform == PlatformDeepseek {
+		if isOfficialDeepSeekBaseURL(base) {
+			return buildOpenAIEndpointURL(base, "/responses")
+		}
+		return buildOpenAIResponsesURL(base)
+	}
 	if profile := LookupProviderProfile(platform); profile != nil && profile.ResponsesPath != "" {
 		return buildOpenAIEndpointURL(base, profile.ResponsesPath)
 	}

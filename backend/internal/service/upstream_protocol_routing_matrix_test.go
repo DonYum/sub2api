@@ -310,6 +310,23 @@ func matchesKnownZhipuNonAPIKeyDifference(tc routingMatrixCase, want, got routin
 		reflect.DeepEqual(got, routingObservation{Error: "account 801 missing api_key", Status: http.StatusOK})
 }
 
+func matchesKnownDeepSeekRelayDifference(tc routingMatrixCase, want, got routingObservation) bool {
+	if tc.platform != PlatformDeepseek {
+		return false
+	}
+	if len(want.Requests) == 1 && len(got.Requests) == 1 {
+		reqWant := want.Requests[0]
+		reqGot := got.Requests[0]
+		if strings.HasSuffix(reqWant.URL, "/responses") && strings.HasSuffix(reqGot.URL, "/v1/responses") &&
+			strings.TrimSuffix(reqWant.URL, "/responses") == strings.TrimSuffix(reqGot.URL, "/v1/responses") {
+			cloneWant := want
+			cloneWant.Requests[0].URL = reqGot.URL
+			return reflect.DeepEqual(cloneWant, got)
+		}
+	}
+	return false
+}
+
 func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	data, err := os.ReadFile(routingMatrixGoldenPath)
@@ -338,13 +355,16 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 			knownDifferences++
 			continue
 		}
+		if matchesKnownDeepSeekRelayDifference(tc, want, got) {
+			knownDifferences++
+			continue
+		}
 		mismatched++
 		if len(differences) < 12 {
 			differences = append(differences, fmt.Sprintf("%s\nmain: %s\ncurrent: %s", tc.key(), want, got))
 		}
 	}
 	require.Zero(t, mismatched, "routing differs from main %s in %d cases:\n%s", golden.SourceRevision, mismatched, strings.Join(differences, "\n"))
-	// 2 account types × 4 modes × 3 probe states × 4 address configurations ×
-	// 2 model spellings. A disappeared or expanded exception requires review.
-	require.Equal(t, 192, knownDifferences, "unexpected change to the declared Zhipu non-API-Key difference")
+	// 192 (Zhipu non-API-Key) + 4 (DonYum DeepSeek relay /v1/responses vs official /responses)
+	require.Equal(t, 192+4, knownDifferences, "unexpected change to the declared routing difference")
 }

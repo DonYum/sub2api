@@ -931,6 +931,9 @@ func (s *GatewayService) recordUsageBillingModel(ctx context.Context, apiKey *AP
 	if fields.BillingModelSource == BillingModelSourceRequested && fields.OriginalModel != "" {
 		billingModel = fields.OriginalModel
 	}
+	if fields.BillingModelSource == BillingModelSourceUpstream && strings.TrimSpace(result.UpstreamModel) != "" {
+		billingModel = result.UpstreamModel
+	}
 	// composite 分组的公开别名（如 all/claude）会经 OriginalModel/ChannelMappedModel
 	// 进入上面的来源覆盖：任意别名查无价会静默落 $0，含家族词的别名则被价格表的
 	// 家族模糊匹配错计（如 Opus 流量按 Sonnet 兜底价）。除非管理员为别名显式配置了
@@ -993,6 +996,8 @@ func (s *GatewayService) QuoteUsageCost(ctx context.Context, input *RecordUsageI
 	if cost == nil {
 		return 0
 	}
+	accountRateMultiplier := input.Account.BillingRateMultiplier()
+	applyCostBreakdownActualCostMultiplier(cost, accountRateMultiplier)
 	return cost.ActualCost
 }
 

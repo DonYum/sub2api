@@ -478,3 +478,21 @@ func TestReserveFixedCharge(t *testing.T) {
 		require.NoError(t, reserve(svc, nil, nil, nil, 1000))
 	})
 }
+
+func TestReviewCachedContentQuoteMatchesAccountMultiplier(t *testing.T) {
+	for _, rate := range []float64{0.6, 2} {
+		t.Run(fmt.Sprint(rate), func(t *testing.T) {
+			svc, repo := newGeminiCacheBillingGatewayForTest(t)
+			gid := int64(33)
+			key := &APIKey{ID: 821, GroupID: &gid, User: &User{ID: 621}, Group: &Group{ID: gid, Platform: PlatformGemini, RateMultiplier: 1, Hydrated: true}}
+			input := &RecordUsageInput{
+				Result: &ForwardResult{RequestID: "review-quote", Model: "gemini-3.8-flash", CacheStorageTokenHours: 20000},
+				APIKey: key, User: key.User, Account: &Account{ID: 713, Platform: PlatformGemini, RateMultiplier: &rate},
+			}
+			quote := svc.QuoteUsageCost(context.Background(), input)
+			require.NoError(t, svc.RecordUsage(context.Background(), input))
+			t.Logf("account rate=%g reserved quote=%g actual=%g", rate, quote, repo.lastLog.ActualCost)
+			require.InDelta(t, repo.lastLog.ActualCost, quote, 1e-12, "reservation must quote the amount actually billed")
+		})
+	}
+}

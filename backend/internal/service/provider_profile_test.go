@@ -162,7 +162,10 @@ func TestProviderProfile_ResponsesPathMatchesLegacy(t *testing.T) {
 
 	legacy := func(platform, base string) string {
 		if platform == PlatformDeepseek {
-			return buildOpenAIEndpointURL(base, "/responses")
+			if isOfficialDeepSeekBaseURL(base) {
+				return buildOpenAIEndpointURL(base, "/responses")
+			}
+			return buildOpenAIResponsesURL(base)
 		}
 		return buildOpenAIResponsesURL(base)
 	}
