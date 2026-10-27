@@ -111,6 +111,19 @@ func TestKeyDirectoryHTTPContractAndAudit(t *testing.T) {
 			} else {
 				require.NotContains(t, w.Body.String(), "returned-secret")
 			}
+			if tc.name == "directory" {
+				var result struct {
+					Data struct {
+						Items []map[string]any `json:"items"`
+					} `json:"data"`
+				}
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &result))
+				require.Len(t, result.Data.Items, 1)
+				entry := result.Data.Items[0]
+				require.Equal(t, "openai", entry["platform"])
+				require.Equal(t, []any{"openai_responses", "openai_chat_completions"}, entry["protocols"])
+				require.Len(t, entry, 5)
+			}
 		})
 	}
 	audit.Stop()
