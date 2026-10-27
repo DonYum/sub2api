@@ -173,3 +173,39 @@ func TestKeyDirectoryBaseURL(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyDirectoryListMetadataMatchesResolve(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		group     *Group
+		platform  string
+		protocols []string
+	}{
+		{"anthropic", &Group{Platform: PlatformAnthropic}, PlatformAnthropic, []string{"anthropic_messages"}},
+		{"openai", &Group{Platform: PlatformOpenAI}, PlatformOpenAI, []string{"openai_responses", "openai_chat_completions"}},
+		{"gemini", &Group{Platform: PlatformGemini}, PlatformGemini, []string{"gemini_generate_content"}},
+		{"compatible", &Group{Platform: PlatformDeepseek}, PlatformDeepseek, []string{"openai_chat_completions"}},
+		{"no group", nil, "", []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, _, _, keys := newDirectoryTestService()
+			keys.rows[0].Group = tc.group
+			ctx := context.Background()
+			entries, page, err := svc.List(ctx, 1, pagination.PaginationParams{Page: 1, PageSize: 100})
+			require.NoError(t, err)
+			require.EqualValues(t, 1, page.Total)
+			require.Len(t, entries, 1, "other user's key must remain excluded")
+			require.Equal(t, tc.platform, entries[0].Platform)
+			require.Equal(t, tc.protocols, entries[0].Protocols)
+			connection, err := svc.Resolve(ctx, 1, "alpha", nil)
+			require.NoError(t, err)
+			require.Equal(t, entries[0], connection.KeyDirectoryEntry)
+			raw, err := json.Marshal(entries[0])
+			require.NoError(t, err)
+			var fields map[string]any
+			require.NoError(t, json.Unmarshal(raw, &fields))
+			require.Len(t, fields, 5, "list must not gain tokens or connection secrets")
+			require.IsType(t, []any{}, fields["protocols"], "protocols must always be an array, including without a group")
+		})
+	}
+}

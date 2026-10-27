@@ -115,9 +115,11 @@ func (s *KeyDirectoryService) Authenticate(ctx context.Context, token string) (*
 }
 
 type KeyDirectoryEntry struct {
-	ID     int64  `json:"id"`
-	Name   string `json:"api_key_name"`
-	Status string `json:"status"`
+	ID        int64    `json:"id"`
+	Name      string   `json:"api_key_name"`
+	Status    string   `json:"status"`
+	Platform  string   `json:"platform"`
+	Protocols []string `json:"protocols"`
 }
 
 type KeyDirectoryConnection struct {
@@ -125,10 +127,8 @@ type KeyDirectoryConnection struct {
 	Token      string     `json:"api_key_token"`
 	BaseURL    string     `json:"base_url"`
 	ExpiresAt  *time.Time `json:"expires_at"`
-	Platform   string     `json:"platform"`
 	Type       string     `json:"type"`
 	ModelNames []string   `json:"model_names"`
-	Protocols  []string   `json:"protocols"`
 }
 
 // directoryConnectionMetadata is deliberately derived from the key's group,
@@ -136,7 +136,7 @@ type KeyDirectoryConnection struct {
 // no model allowlist and therefore permits the platform's model set.
 func directoryConnectionMetadata(key APIKey) ([]string, []string) {
 	if key.Group == nil {
-		return nil, nil
+		return nil, []string{}
 	}
 	var models []string
 	if key.Group.ModelAllowlist.Enabled {
@@ -158,6 +158,14 @@ func directoryConnectionMetadata(key APIKey) ([]string, []string) {
 	return models, protocols
 }
 
+func directoryEntry(key APIKey, protocols []string) KeyDirectoryEntry {
+	platform := ""
+	if key.Group != nil {
+		platform = key.Group.Platform
+	}
+	return KeyDirectoryEntry{ID: key.ID, Name: key.Name, Status: key.Status, Platform: platform, Protocols: protocols}
+}
+
 func (s *KeyDirectoryService) List(ctx context.Context, userID int64, params pagination.PaginationParams) ([]KeyDirectoryEntry, *pagination.PaginationResult, error) {
 	keys, page, err := s.keys.ListByUserID(ctx, userID, params, APIKeyListFilters{})
 	if err != nil {
@@ -165,7 +173,8 @@ func (s *KeyDirectoryService) List(ctx context.Context, userID int64, params pag
 	}
 	out := make([]KeyDirectoryEntry, 0, len(keys))
 	for _, key := range keys {
-		out = append(out, KeyDirectoryEntry{ID: key.ID, Name: key.Name, Status: key.Status})
+		_, protocols := directoryConnectionMetadata(key)
+		out = append(out, directoryEntry(key, protocols))
 	}
 	return out, page, nil
 }
@@ -197,18 +206,12 @@ func (s *KeyDirectoryService) Resolve(ctx context.Context, userID int64, name st
 	}
 	key := keys[0]
 	models, protocols := directoryConnectionMetadata(key)
-	platform := ""
-	if key.Group != nil {
-		platform = key.Group.Platform
-	}
 	return &KeyDirectoryConnection{
-		KeyDirectoryEntry: KeyDirectoryEntry{ID: key.ID, Name: key.Name, Status: key.Status},
+		KeyDirectoryEntry: directoryEntry(key, protocols),
 		Token:             key.Key,
 		BaseURL:           base,
 		ExpiresAt:         key.ExpiresAt,
-		Platform:          platform,
 		Type:              "api_key",
 		ModelNames:        models,
-		Protocols:         protocols,
 	}, nil
 }
