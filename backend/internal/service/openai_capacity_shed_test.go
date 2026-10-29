@@ -214,7 +214,6 @@ func TestRecordOpenAICapacityShedOnlyAppliesToOAuthAccounts(t *testing.T) {
 		require.Empty(t, repo.inputs)
 	})
 }
-}
 
 // 上游降载的真实序列是「event: error → event: response.failed」。error 帧不算
 // 客户端输出：若把它当首输出 flush，clientOutputStarted 被固化，随后的 failed

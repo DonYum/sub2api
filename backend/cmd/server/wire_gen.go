@@ -49,7 +49,6 @@ func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	userRepository := repository.NewUserRepository(client, db)
 	apiKeyRepository := repository.NewAPIKeyRepository(client, db)
 	keyDirectoryService := service.NewKeyDirectoryService(settingRepository, userRepository, apiKeyRepository)
-	auditLogRepository := repository.NewAuditLogRepository(db)
 	groupRepository := repository.NewGroupRepository(client, db)
 	proxyRepository := repository.NewProxyRepository(client, db)
 	scopedAdminKeyRepository := repository.NewScopedAdminKeyRepository(db)
