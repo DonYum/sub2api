@@ -530,7 +530,7 @@ func TestOpenAICapacityBreakerStateResetsAfterStableWindow(t *testing.T) {
 	require.Equal(t, resetAt.Add(1*time.Minute), *decision.Until)
 }
 
-func TestOpenAICapacityBreakerStateSkipsActiveDisableAndPermanent(t *testing.T) {
+func TestOpenAICapacityBreakerStateSkipsActiveDisableAndRecoversLegacyPermanent(t *testing.T) {
 	now := time.Date(2026, 8, 16, 1, 0, 0, 0, time.UTC)
 	active := OpenAICapacityBreakerModelState{
 		Level:         1,
@@ -541,11 +541,14 @@ func TestOpenAICapacityBreakerStateSkipsActiveDisableAndPermanent(t *testing.T) 
 	require.False(t, decision.Applied)
 	require.Equal(t, "already_disabled", decision.SkippedReason)
 
+	// 历史存量 permanent 账号：方案 A 取消永久停调，必须平滑恢复并进入温和短退避梯队
 	permanent := OpenAICapacityBreakerModelState{Level: 4, Permanent: true, Reason: "server_is_overloaded"}
-	_, decision = NextOpenAICapacityBreakerState(permanent, now, http.StatusServiceUnavailable, "repeat")
-	require.False(t, decision.Applied)
-	require.True(t, decision.Permanent)
-	require.Equal(t, "already_permanent", decision.SkippedReason)
+	next, decision := NextOpenAICapacityBreakerState(permanent, now, http.StatusServiceUnavailable, "repeat")
+	require.True(t, decision.Applied)
+	require.False(t, decision.Permanent)
+	require.False(t, next.Permanent)
+	require.NotNil(t, decision.Until)
+	require.Equal(t, now.Add(1*time.Minute), *decision.Until)
 }
 
 // 流中途（已有真实输出）降载时无法再 failover，此时必须把降载码改写为客户端

@@ -62,15 +62,6 @@ func IsOpenAICapacityShedText(text string) bool {
 
 func NextOpenAICapacityBreakerState(existing OpenAICapacityBreakerModelState, now time.Time, statusCode int, message string) (OpenAICapacityBreakerModelState, *OpenAICapacityBreakerDecision) {
 	now = now.UTC()
-	if existing.Permanent {
-		return existing, &OpenAICapacityBreakerDecision{
-			Applied:       false,
-			Permanent:     true,
-			Level:         existing.Level,
-			Reason:        existing.Reason,
-			SkippedReason: "already_permanent",
-		}
-	}
 	if disabledUntil, ok := parseOpenAICapacityBreakerTime(existing.DisabledUntil); ok && now.Before(disabledUntil) {
 		until := disabledUntil
 		return existing, &OpenAICapacityBreakerDecision{
