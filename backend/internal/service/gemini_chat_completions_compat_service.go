@@ -129,61 +129,80 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		firstOutputTimeout = geminiFirstOutputTimeoutFor(len(geminiReq))
 	}
 	firstOutputFailures := 0
+	hedgeFirstOutput := clientStream && len(geminiReq) < geminiFirstOutputLargeBodyBytes
 
 	var resp *http.Response
 	// checkedPolicy 是循环内对当前 resp 的错误策略检查结果，未检查时为 nil。
 	var checkedPolicy *ErrorPolicyResult
 	maxAttempts := s.geminiMaxAttemptsPerAccount()
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		guard := newGeminiFirstOutputGuard(ctx, firstOutputTimeout)
-		upstreamReq, idHeader, err := buildReq(guard.ctx)
-		if err != nil {
-			guard.Abort()
-			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				return nil, err
+		if hedgeFirstOutput {
+			raced, idHeader, err := s.raceGeminiStreamFirstOutput(ctx, c, account, buildReq, proxyURL, firstOutputTimeout)
+			if err != nil {
+				var failoverErr *UpstreamFailoverError
+				if errors.As(err, &failoverErr) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return nil, err
+				}
+				if failoverErr := s.handleVertexServiceAccountNotFound(ctx, c, account, err); failoverErr != nil {
+					return nil, failoverErr
+				}
+				return nil, s.handleUpstreamTransportError(ctx, c, account, err)
 			}
-			if failoverErr := s.handleVertexServiceAccountNotFound(ctx, c, account, err); failoverErr != nil {
-				return nil, failoverErr
+			resp, requestIDHeader = raced, idHeader
+			if resp.StatusCode == http.StatusOK {
+				break
 			}
-			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", err.Error())
-		}
-		requestIDHeader = idHeader
+		} else {
+			guard := newGeminiFirstOutputGuard(ctx, firstOutputTimeout)
+			upstreamReq, idHeader, err := buildReq(guard.ctx)
+			if err != nil {
+				guard.Abort()
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					return nil, err
+				}
+				if failoverErr := s.handleVertexServiceAccountNotFound(ctx, c, account, err); failoverErr != nil {
+					return nil, failoverErr
+				}
+				return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", err.Error())
+			}
+			requestIDHeader = idHeader
 
-		resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
-		if err != nil {
-			guard.Abort()
-			if clientStream && guard.TimedOut() && ctx.Err() == nil {
-				if retry, failErr := s.noteGeminiFirstOutputFailure(c, account, &firstOutputFailures, errGeminiFirstOutputTimeout, firstOutputTimeout); retry {
+			resp, err = s.httpUpstream.Do(upstreamReq, proxyURL, account.ID, account.Concurrency)
+			if err != nil {
+				guard.Abort()
+				if clientStream && guard.TimedOut() && ctx.Err() == nil {
+					if retry, failErr := s.noteGeminiFirstOutputFailure(c, account, &firstOutputFailures, errGeminiFirstOutputTimeout, firstOutputTimeout); retry {
+						continue
+					} else {
+						return nil, failErr
+					}
+				}
+				return nil, s.handleUpstreamTransportError(ctx, c, account, err)
+			}
+			resp.Body = &geminiGuardedBody{Reader: resp.Body, closer: resp.Body, guard: guard}
+
+			if clientStream && resp.StatusCode == http.StatusOK {
+				replay, prefetchErr := prefetchGeminiStreamFirstOutput(resp.Body, account.Type == AccountTypeOAuth)
+				if prefetchErr == nil && guard.Release() {
+					resp.Body = &geminiGuardedBody{Reader: replay, closer: resp.Body, guard: guard}
+					break
+				}
+				_ = resp.Body.Close()
+				if ctx.Err() != nil {
+					return nil, ctx.Err()
+				}
+				failure := prefetchErr
+				if guard.TimedOut() {
+					failure = errGeminiFirstOutputTimeout
+				}
+				if retry, failErr := s.noteGeminiFirstOutputFailure(c, account, &firstOutputFailures, failure, firstOutputTimeout); retry {
 					continue
 				} else {
 					return nil, failErr
 				}
 			}
-			return nil, s.handleUpstreamTransportError(ctx, c, account, err)
+			guard.Release()
 		}
-		resp.Body = &geminiGuardedBody{Reader: resp.Body, closer: resp.Body, guard: guard}
-
-		if clientStream && resp.StatusCode == http.StatusOK {
-			replay, prefetchErr := prefetchGeminiStreamFirstOutput(resp.Body, account.Type == AccountTypeOAuth)
-			if prefetchErr == nil && guard.Release() {
-				resp.Body = &geminiGuardedBody{Reader: replay, closer: resp.Body, guard: guard}
-				break
-			}
-			_ = resp.Body.Close()
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
-			}
-			failure := prefetchErr
-			if guard.TimedOut() {
-				failure = errGeminiFirstOutputTimeout
-			}
-			if retry, failErr := s.noteGeminiFirstOutputFailure(c, account, &firstOutputFailures, failure, firstOutputTimeout); retry {
-				continue
-			} else {
-				return nil, failErr
-			}
-		}
-		guard.Release()
 
 		checked, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel)
 		resp = rebuilt

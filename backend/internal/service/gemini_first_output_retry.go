@@ -28,7 +28,9 @@ const (
 
 // 变量形式便于测试缩短。
 var (
-	geminiFirstOutputTimeout = 30 * time.Second
+	// 小请求的补发间隔：首份 10 秒没出字就并发补发一份，再过 10 秒再补一份。
+	geminiFirstOutputHedgeDelay = 10 * time.Second
+	geminiFirstOutputTimeout    = 30 * time.Second
 	// 超大上下文且未命中缓存时，上游正常也要 60～130 秒才出首字。
 	geminiFirstOutputLargeTimeout = 150 * time.Second
 )
@@ -203,5 +205,141 @@ func (s *GeminiMessagesCompatService) noteGeminiFirstOutputFailure(c *gin.Contex
 	return false, &UpstreamFailoverError{
 		StatusCode:   http.StatusBadGateway,
 		ResponseBody: geminiTransportFailoverBody,
+	}
+}
+
+// geminiHedgeOutcome 是一份并发尝试的结果：won=拿到首个内容；decisive=非 200 响应，交回调用方
+// 按原有错误处理；两者都不是即失败（超时 / 空流 / 传输错误）。
+type geminiHedgeOutcome struct {
+	resp     *http.Response
+	idHeader string
+	won      bool
+	decisive bool
+	failure  error
+	guard    *geminiFirstOutputGuard
+}
+
+// raceGeminiStreamFirstOutput 对小请求做错峰并发：先发一份，hedgeDelay 内没出字就再发一份，
+// 最多 maxAttempts 份；首个出字的胜出，其余取消。某份提前失败时立即补发下一份。
+// 只在主 goroutine 里写 gin 上下文（ops 记录）。
+func (s *GeminiMessagesCompatService) raceGeminiStreamFirstOutput(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	buildReq func(context.Context) (*http.Request, string, error),
+	proxyURL string,
+	attemptTimeout time.Duration,
+) (*http.Response, string, error) {
+	isOAuth := account.Type == AccountTypeOAuth
+	results := make(chan geminiHedgeOutcome, geminiFirstOutputMaxAttempts)
+	var guards []*geminiFirstOutputGuard
+	launched, finished, failures := 0, 0, 0
+
+	launch := func() {
+		launched++
+		guard := newGeminiFirstOutputGuard(ctx, attemptTimeout)
+		guards = append(guards, guard)
+		go func() {
+			out := geminiHedgeOutcome{guard: guard}
+			req, idHeader, err := buildReq(guard.ctx)
+			if err != nil {
+				out.failure = err
+				results <- out
+				return
+			}
+			out.idHeader = idHeader
+			resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
+			if err != nil {
+				out.failure = err
+				if guard.TimedOut() {
+					out.failure = errGeminiFirstOutputTimeout
+				}
+				results <- out
+				return
+			}
+			resp.Body = &geminiGuardedBody{Reader: resp.Body, closer: resp.Body, guard: guard}
+			if resp.StatusCode != http.StatusOK {
+				out.resp, out.decisive = resp, true
+				results <- out
+				return
+			}
+			replay, prefetchErr := prefetchGeminiStreamFirstOutput(resp.Body, isOAuth)
+			if prefetchErr == nil && guard.Release() {
+				resp.Body = &geminiGuardedBody{Reader: replay, closer: resp.Body, guard: guard}
+				out.resp, out.won = resp, true
+				results <- out
+				return
+			}
+			_ = resp.Body.Close()
+			out.failure = prefetchErr
+			if guard.TimedOut() || prefetchErr == nil {
+				out.failure = errGeminiFirstOutputTimeout
+			}
+			results <- out
+		}()
+	}
+
+	// 胜出后取消其余尝试，并在后台回收它们的响应体。
+	settle := func(winner *geminiFirstOutputGuard) {
+		for _, g := range guards {
+			if g != winner {
+				g.Abort()
+			}
+		}
+		pending := launched - finished
+		if pending == 0 {
+			return
+		}
+		go func() {
+			for i := 0; i < pending; i++ {
+				if out := <-results; out.resp != nil {
+					_ = out.resp.Body.Close()
+				}
+			}
+		}()
+	}
+
+	launch()
+	hedge := time.NewTimer(geminiFirstOutputHedgeDelay)
+	defer hedge.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			settle(nil)
+			return nil, "", ctx.Err()
+		case <-hedge.C:
+			if launched < geminiFirstOutputMaxAttempts {
+				logger.LegacyPrintf("service.gemini_chat_completions", "Gemini account %d: no output after %s, hedging attempt %d/%d", account.ID, geminiFirstOutputHedgeDelay*time.Duration(launched), launched+1, geminiFirstOutputMaxAttempts)
+				launch()
+				hedge.Reset(geminiFirstOutputHedgeDelay)
+			}
+		case out := <-results:
+			finished++
+			if out.won || out.decisive {
+				settle(out.guard)
+				return out.resp, out.idHeader, nil
+			}
+			if ctx.Err() != nil {
+				settle(nil)
+				return nil, "", ctx.Err()
+			}
+			if !errors.Is(out.failure, errGeminiFirstOutputTimeout) && !errors.Is(out.failure, errGeminiFirstOutputEmpty) {
+				// 传输层错误：还有在途尝试就等它们，否则交回调用方按原有传输错误处理（换号 / 摘号）。
+				if launched-finished > 0 {
+					continue
+				}
+				settle(nil)
+				return nil, "", out.failure
+			}
+			retry, failErr := s.noteGeminiFirstOutputFailure(c, account, &failures, out.failure, attemptTimeout)
+			if !retry {
+				settle(nil)
+				return nil, "", failErr
+			}
+			if launched < geminiFirstOutputMaxAttempts && launched-finished == 0 {
+				launch()
+				hedge.Reset(geminiFirstOutputHedgeDelay)
+			}
+		}
 	}
 }
