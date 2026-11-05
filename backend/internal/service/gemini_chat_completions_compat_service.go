@@ -137,7 +137,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	maxAttempts := s.geminiMaxAttemptsPerAccount()
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		if hedgeFirstOutput {
-			raced, idHeader, err := s.raceGeminiStreamFirstOutput(ctx, c, account, buildReq, proxyURL, firstOutputTimeout)
+			raced, idHeader, err := s.raceGeminiStreamFirstOutput(ctx, c, account, buildReq, proxyURL)
 			if err != nil {
 				var failoverErr *UpstreamFailoverError
 				if errors.As(err, &failoverErr) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {

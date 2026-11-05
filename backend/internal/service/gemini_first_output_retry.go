@@ -28,8 +28,9 @@ const (
 
 // 变量形式便于测试缩短。
 var (
-	// 小请求的补发间隔：首份 10 秒没出字就并发补发一份，再过 10 秒再补一份。
-	geminiFirstOutputHedgeDelay = 10 * time.Second
+	// 小请求的补发间隔：首份 30 秒没出字就并发补发一份，再过 30 秒再补一份；
+	// 已发出的尝试不取消，共用 geminiFirstOutputMaxAttempts×间隔 的总等待（90 秒）。
+	geminiFirstOutputHedgeDelay = 30 * time.Second
 	geminiFirstOutputTimeout    = 30 * time.Second
 	// 超大上下文且未命中缓存时，上游正常也要 60～130 秒才出首字。
 	geminiFirstOutputLargeTimeout = 150 * time.Second
@@ -220,24 +221,29 @@ type geminiHedgeOutcome struct {
 }
 
 // raceGeminiStreamFirstOutput 对小请求做错峰并发：先发一份，hedgeDelay 内没出字就再发一份，
-// 最多 maxAttempts 份；首个出字的胜出，其余取消。某份提前失败时立即补发下一份。
-// 只在主 goroutine 里写 gin 上下文（ops 记录）。
+// 最多 maxAttempts 份；已发出的不取消，所有尝试共用同一个截止时间，首个出字的胜出，其余取消。
+// 某份提前失败（空流）时立即补发下一份。只在主 goroutine 里写 gin 上下文（ops 记录）。
 func (s *GeminiMessagesCompatService) raceGeminiStreamFirstOutput(
 	ctx context.Context,
 	c *gin.Context,
 	account *Account,
 	buildReq func(context.Context) (*http.Request, string, error),
 	proxyURL string,
-	attemptTimeout time.Duration,
 ) (*http.Response, string, error) {
 	isOAuth := account.Type == AccountTypeOAuth
+	budget := geminiFirstOutputHedgeDelay * geminiFirstOutputMaxAttempts
+	deadline := time.Now().Add(budget)
 	results := make(chan geminiHedgeOutcome, geminiFirstOutputMaxAttempts)
 	var guards []*geminiFirstOutputGuard
 	launched, finished, failures := 0, 0, 0
 
 	launch := func() {
 		launched++
-		guard := newGeminiFirstOutputGuard(ctx, attemptTimeout)
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			remaining = time.Millisecond
+		}
+		guard := newGeminiFirstOutputGuard(ctx, remaining)
 		guards = append(guards, guard)
 		go func() {
 			out := geminiHedgeOutcome{guard: guard}
@@ -331,7 +337,7 @@ func (s *GeminiMessagesCompatService) raceGeminiStreamFirstOutput(
 				settle(nil)
 				return nil, "", out.failure
 			}
-			retry, failErr := s.noteGeminiFirstOutputFailure(c, account, &failures, out.failure, attemptTimeout)
+			retry, failErr := s.noteGeminiFirstOutputFailure(c, account, &failures, out.failure, budget)
 			if !retry {
 				settle(nil)
 				return nil, "", failErr
