@@ -28,6 +28,19 @@ var (
 	// imageLocalPathBlockRe 剥离 WorkBuddy 剪贴板图片本地路径附件块。
 	imageLocalPathBlockRe = regexp.MustCompile(`(?is)<image_local_path\b[^>]*>.*?</image_local_path>`)
 
+	// messageQueueReminderRe 匹配客户端（Claude Code / WorkBuddy）在运行中途将用户插话包裹在
+	// `The user sent a new message while you were working:\n...\nAddress this before completing...` 中的结构，提取其中的真实插话。
+	messageQueueReminderRe = regexp.MustCompile(`(?is)The user sent a new message while you were working:\s*(.*?)(?:\n+\s*(?:Address this before completing your current task\.|This is how Claude Code surfaces messages the user sends mid-turn[^\n]*)|\s*</system-reminder>|$)`)
+
+	// codexHandoffSummaryTailRe 剥离 Codex 跨模型/跨阶段续接时附带在用户问题后面的思维链与上下文摘要。
+	codexHandoffSummaryTailRe = regexp.MustCompile(`(?is)\n*\s*Another language model started to solve this problem and produced a summary of its thinking process\..*$`)
+
+	// codexQuestionReplyBlockRe 匹配 Codex `<send_user_message_question_reply>...</send_user_message_question_reply>` 块。
+	codexQuestionReplyBlockRe = regexp.MustCompile(`(?is)<send_user_message_question_reply\b[^>]*>(.*?)</send_user_message_question_reply>`)
+
+	// claudeImageCoordNoteRe 剥离 Claude Code 附加在图片块后的坐标缩放说明 `[Image: original ... to map to original image.]`。
+	claudeImageCoordNoteRe = regexp.MustCompile(`(?is)\[Image:\s*original\s+\d+x\d+[^\]]*to map to original image\.\]`)
+
 	// strippedAgentNoiseBlockPatterns 剥离各类 Coding Agent 注入在 user 消息中的非用户指令/环境噪音闭合标签块。
 	// 仅剥离闭合标签块本身，保留同一文本块中标签以外的用户真实输入（解决 content_moderation_input.go 整块丢弃的盲区）。
 	strippedAgentNoiseBlockPatterns = []*regexp.Regexp{
@@ -56,6 +69,7 @@ var (
 		regexp.MustCompile(`(?is)<recent-messages\b[^>]*>.*?</recent-messages>`),
 		regexp.MustCompile(`(?is)<objects-in-play\b[^>]*>.*?</objects-in-play>`),
 		regexp.MustCompile(`(?is)<recent-actions\b[^>]*>.*?</recent-actions>`),
+		regexp.MustCompile(`(?is)<task-notification\b[^>]*>.*?</task-notification>`),
 	}
 
 	// codexAgentsMdBlockRe 剥离 Codex CLI/Desktop 注入在首条 user 消息中的 `# AGENTS.md instructions ... </INSTRUCTIONS>` 块。
@@ -518,8 +532,39 @@ func cleanSingleUserTextSegment(text string) string {
 		return strings.Join(queries, "\n")
 	}
 
-	// 2. 剥离 Codex AGENTS.md 指令块、Raft inbox notice 提醒块与各类 Agent 注入的闭合标签块
+	// 2. 若是运行中途插入的用户排队消息（The user sent a new message while you were working: ...），提取其中的真实用户插话
+	if m := messageQueueReminderRe.FindStringSubmatch(text); len(m) > 1 {
+		q := strings.TrimSpace(m[1])
+		if q != "" && !isSyntheticContinuationPrompt(q) {
+			return q
+		}
+	}
+
+	// 3. 若是 Codex 交互式问答回复块 <send_user_message_question_reply>...</send_user_message_question_reply>，直接提取 answer 字段
+	if m := codexQuestionReplyBlockRe.FindStringSubmatch(text); len(m) > 1 {
+		rawJSON := strings.TrimSpace(m[1])
+		if gjson.Valid(rawJSON) {
+			var answers []string
+			res := gjson.Parse(rawJSON)
+			if res.IsArray() {
+				for _, item := range res.Array() {
+					if ans := strings.TrimSpace(item.Get("answer").String()); ans != "" {
+						answers = append(answers, ans)
+					}
+				}
+			} else if ans := strings.TrimSpace(res.Get("answer").String()); ans != "" {
+				answers = append(answers, ans)
+			}
+			if len(answers) > 0 {
+				return strings.Join(answers, "\n")
+			}
+		}
+	}
+
+	// 4. 剥离 Codex AGENTS.md 指令块、跨模型交接摘要尾部、图片坐标说明、Raft inbox notice 提醒块与各类 Agent 注入的闭合标签块
 	cleaned := codexAgentsMdBlockRe.ReplaceAllString(text, "")
+	cleaned = codexHandoffSummaryTailRe.ReplaceAllString(cleaned, "")
+	cleaned = claudeImageCoordNoteRe.ReplaceAllString(cleaned, "")
 	cleaned = raftInboxNoticeBlockRe.ReplaceAllString(cleaned, "")
 	for _, re := range strippedAgentNoiseBlockPatterns {
 		cleaned = re.ReplaceAllString(cleaned, "")
@@ -585,13 +630,28 @@ func isSyntheticContinuationPrompt(text string) bool {
 	if strings.HasPrefix(lower, "current state: working (for ") && strings.Contains(lower, "tool calls so far:") {
 		return true
 	}
-	// Claude Code 后台安全审查 / Away Recap / Subagent Fork / 标题生成 / Codex 后台建议生成模板
+	// Claude Code / Gemini CLI / Codex / WorkBuddy 后台安全审查、会话摘要、标题生成、记忆整理、自动压缩、多 Agent 内部编排唤醒等非人类输入模板
 	for _, prefix := range []string{
 		"the following is the user's claude.md configuration.",
 		"the following is the full conversation transcript",
 		"the following is the codex agent history",
 		"the user stepped away and is coming back. recap in under",
 		"<fork-boilerplate>",
+		"summarize the user's primary intent or goal in this conversation in one sentence",
+		"you are a helpful assistant. you will be presented with a user prompt, and your job is to provide a short title",
+		"generate a concise, single-line task title",
+		"you are coming up with a succinct title and git branch name for a coding session",
+		"[suggestion mode: suggest what the user might naturally type next",
+		"you are performing a context checkpoint compaction. create a handoff summary",
+		"your task is to create a detailed and highly structured summary of the conversation so far",
+		"analyze this rollout and produce json with `raw_memory`, `rollout_summary`, and `rollout_slug`",
+		"## memory writing agent:",
+		"output token limit hit. resume directly — no apology, no recap of what you were doing.",
+		"time sampled while preparing turn ",
+		"agentteams automatic task assignment from the shared task list.",
+		"agentteams message from member ",
+		"background subagent ",
+		"[important: you are running as a scheduled cron job.",
 	} {
 		if strings.HasPrefix(lower, prefix) {
 			return true
@@ -599,6 +659,10 @@ func isSyntheticContinuationPrompt(text string) bool {
 	}
 	if (strings.HasPrefix(lower, "<session>") && strings.Contains(lower, "write the title in the predominant language")) ||
 		strings.Contains(lower, "generate 0 to 3 hyperpersonalized suggestions for what this user can do with codex") ||
+		(strings.HasPrefix(lower, "image \"") && strings.Contains(lower, "normalized copy (read-only; may be resized or re-encoded):")) ||
+		(strings.HasPrefix(lower, "agent ") && strings.Contains(lower, " sent a message:")) ||
+		(strings.HasPrefix(lower, "background job ") && strings.Contains(lower, "status:")) ||
+		strings.Contains(trimmed, "现在由哨兵在后台无人值守唤醒") ||
 		strings.HasPrefix(trimmed, "<recent-messages ") ||
 		strings.HasPrefix(trimmed, "<session_context>") {
 		return true

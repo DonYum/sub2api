@@ -352,6 +352,36 @@ func TestExtractSanitizedUserInput_ComprehensiveCases(t *testing.T) {
 			body:     `{"messages":[{"role":"user","content":"<recent-messages order=\"newest last\">[target=#token_proxy]</recent-messages>\n<objects-in-play><object name=\"foo.go\"/></objects-in-play>\n<recent-actions>s1 Bash</recent-actions>"}]}`,
 			want:     "",
 		},
+		{
+			name:     "Skip_GeminiCLIConversationSummaryBackgroundJob",
+			protocol: ContentModerationProtocolGemini,
+			body:     `{"contents":[{"role":"user","parts":[{"text":"Summarize the user's primary intent or goal in this conversation in ONE sentence (max 80 characters).\nFocus on what the user was trying to accomplish.\n\nConversation:\nUser: 111\n\nSummary (max 80 chars):"}]}]}`,
+			want:     "",
+		},
+		{
+			name:     "Extract_MidTurnMessageQueueReminderUserInput",
+			protocol: ContentModerationProtocolOpenAIChat,
+			body:     `{"messages":[{"role":"user","content":"<system-reminder data-role=\"message-queue\">\nThe user sent a new message while you were working:\n不能把极端值直接去除吗？即使有少数是真实的，去除也不会太影响整体吧\nAddress this before completing your current task.\n</system-reminder>"}]}`,
+			want:     "不能把极端值直接去除吗？即使有少数是真实的，去除也不会太影响整体吧",
+		},
+		{
+			name:     "Extract_CodexQuestionReplyAnswerAndStripHandoffSummary",
+			protocol: ContentModerationProtocolOpenAIResponses,
+			body:     `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"<send_user_message_question_reply>\n[{\"questionItemId\":\"q1\",\"question\":\"是否还有可用于本轮验收的 GPU 集群？\",\"answer\":\"这个用例先跳过 后面我会让你在k8s 11 环境 验证GPU\"}]\n</send_user_message_question_reply>\nAnother language model started to solve this problem and produced a summary of its thinking process. Here is the summary..."}]}]}`,
+			want:     "这个用例先跳过 后面我会让你在k8s 11 环境 验证GPU",
+		},
+		{
+			name:     "Skip_CodexContextCheckpointCompaction",
+			protocol: ContentModerationProtocolOpenAIResponses,
+			body:     `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"You are performing a CONTEXT CHECKPOINT COMPACTION. Create a handoff summary for another LLM that will resume the task."}]}]}`,
+			want:     "",
+		},
+		{
+			name:     "Skip_TaskNotificationOnly",
+			protocol: ContentModerationProtocolOpenAIChat,
+			body:     `{"messages":[{"role":"user","content":"<task-notification>\n<task-id>aGyVf2</task-id>\n<status>failed</status>\n</task-notification>"}]}`,
+			want:     "",
+		},
 	}
 
 	for _, tc := range cases {
