@@ -46,6 +46,12 @@ var (
 		regexp.MustCompile(`(?is)<memory_and_skills_reminder\b[^>]*>.*?</memory_and_skills_reminder>`),
 		regexp.MustCompile(`(?is)<conversation_history_summary\b[^>]*>.*?</conversation_history_summary>`),
 		regexp.MustCompile(`(?is)<total_tokens\b[^>]*>.*?</total_tokens>`),
+		regexp.MustCompile(`(?is)<local-command-caveat\b[^>]*>.*?</local-command-caveat>`),
+		regexp.MustCompile(`(?is)<local-command-stdout\b[^>]*>.*?</local-command-stdout>`),
+		regexp.MustCompile(`(?is)<command-name\b[^>]*>.*?</command-name>`),
+		regexp.MustCompile(`(?is)<command-message\b[^>]*>.*?</command-message>`),
+		regexp.MustCompile(`(?is)<command-args\b[^>]*>.*?</command-args>`),
+		regexp.MustCompile(`(?is)<acp\b[^>]*>.*?</acp>`),
 	}
 
 	// codexAgentsMdBlockRe 剥离 Codex CLI/Desktop 注入在首条 user 消息中的 `# AGENTS.md instructions ... </INSTRUCTIONS>` 块。
@@ -575,7 +581,7 @@ func isSyntheticContinuationPrompt(text string) bool {
 	if strings.HasPrefix(lower, "current state: working (for ") && strings.Contains(lower, "tool calls so far:") {
 		return true
 	}
-	// Claude Code 后台安全审查 / Away Recap / Subagent Fork 模板
+	// Claude Code 后台安全审查 / Away Recap / Subagent Fork / 标题生成 / Codex 后台建议生成模板
 	for _, prefix := range []string{
 		"the following is the user's claude.md configuration.",
 		"the following is the full conversation transcript",
@@ -586,6 +592,10 @@ func isSyntheticContinuationPrompt(text string) bool {
 		if strings.HasPrefix(lower, prefix) {
 			return true
 		}
+	}
+	if (strings.HasPrefix(lower, "<session>") && strings.Contains(lower, "write the title in the predominant language")) ||
+		strings.Contains(lower, "generate 0 to 3 hyperpersonalized suggestions for what this user can do with codex") {
+		return true
 	}
 	if strings.Contains(trimmed, "Respond with <severity>N</severity> ONLY") ||
 		strings.Contains(trimmed, "Your ENTIRE response MUST begin with <block>") ||

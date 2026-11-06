@@ -328,6 +328,18 @@ func TestExtractSanitizedUserInput_ComprehensiveCases(t *testing.T) {
 			body:     `{"messages":[{"role":"user","content":"quota"}]}`,
 			want:     "",
 		},
+		{
+			name:     "Skip_CodexDesktopHyperpersonalizedSuggestions",
+			protocol: ContentModerationProtocolOpenAIResponses,
+			body:     `{"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"# Overview\n\nGenerate 0 to 3 hyperpersonalized suggestions for what this user can do with Codex in this local project: /Users/demo"}]}]}`,
+			want:     "",
+		},
+		{
+			name:     "ClaudeCode_StripLocalCommandCaveatAndKeepQuestion",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body:     `{"messages":[{"role":"user","content":"<local-command-caveat>caveat</local-command-caveat>\n<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>opus</command-args>\n<local-command-stdout>Set model to opus</local-command-stdout>\n集团财务能稳定读到智能记账的结账状态"}]}`,
+			want:     "集团财务能稳定读到智能记账的结账状态",
+		},
 	}
 
 	for _, tc := range cases {
