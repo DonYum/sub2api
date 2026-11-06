@@ -38,8 +38,8 @@ var (
 	// codexQuestionReplyBlockRe 匹配 Codex `<send_user_message_question_reply>...</send_user_message_question_reply>` 块。
 	codexQuestionReplyBlockRe = regexp.MustCompile(`(?is)<send_user_message_question_reply\b[^>]*>(.*?)</send_user_message_question_reply>`)
 
-	// claudeImageCoordNoteRe 剥离 Claude Code 附加在图片块后的坐标缩放说明 `[Image: original ... to map to original image.]`。
-	claudeImageCoordNoteRe = regexp.MustCompile(`(?is)\[Image:\s*original\s+\d+x\d+[^\]]*to map to original image\.\]`)
+	// claudeImageCoordNoteRe 剥离 Claude Code 附加在图片块后的坐标缩放说明 `[Image: original ... to map to original image.]` 或 `[Request interrupted by user]`。
+	claudeImageCoordNoteRe = regexp.MustCompile(`(?is)\[Image:\s*original\s+\d+x\d+[^\]]*to map to original image\.\]|\[\s*Request interrupted by user[^\]]*\]|(?:^|\n)\s*##\s*My request:\s*\n`)
 
 	// strippedAgentNoiseBlockPatterns 剥离各类 Coding Agent 注入在 user 消息中的非用户指令/环境噪音闭合标签块。
 	// 仅剥离闭合标签块本身，保留同一文本块中标签以外的用户真实输入（解决 content_moderation_input.go 整块丢弃的盲区）。
@@ -70,6 +70,7 @@ var (
 		regexp.MustCompile(`(?is)<objects-in-play\b[^>]*>.*?</objects-in-play>`),
 		regexp.MustCompile(`(?is)<recent-actions\b[^>]*>.*?</recent-actions>`),
 		regexp.MustCompile(`(?is)<task-notification\b[^>]*>.*?</task-notification>`),
+		regexp.MustCompile(`(?is)<in-app-browser-context\b[^>]*>.*?</in-app-browser-context>`),
 	}
 
 	// codexAgentsMdBlockRe 剥离 Codex CLI/Desktop 注入在首条 user 消息中的 `# AGENTS.md instructions ... </INSTRUCTIONS>` 块。
@@ -564,11 +565,11 @@ func cleanSingleUserTextSegment(text string) string {
 	// 4. 剥离 Codex AGENTS.md 指令块、跨模型交接摘要尾部、图片坐标说明、Raft inbox notice 提醒块与各类 Agent 注入的闭合标签块
 	cleaned := codexAgentsMdBlockRe.ReplaceAllString(text, "")
 	cleaned = codexHandoffSummaryTailRe.ReplaceAllString(cleaned, "")
-	cleaned = claudeImageCoordNoteRe.ReplaceAllString(cleaned, "")
 	cleaned = raftInboxNoticeBlockRe.ReplaceAllString(cleaned, "")
 	for _, re := range strippedAgentNoiseBlockPatterns {
 		cleaned = re.ReplaceAllString(cleaned, "")
 	}
+	cleaned = claudeImageCoordNoteRe.ReplaceAllString(cleaned, "")
 	cleaned = imageLocalPathBlockRe.ReplaceAllString(cleaned, "")
 	cleaned = extractRaftDeliveredDirectMessages(strings.TrimSpace(cleaned))
 	return strings.TrimSpace(cleaned)
