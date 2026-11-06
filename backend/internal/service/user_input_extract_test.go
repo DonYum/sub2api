@@ -458,6 +458,16 @@ func TestExtractSanitizedUserInput_ComprehensiveCases(t *testing.T) {
 			}`,
 			want: "[msg=cdac32ef] @yunfeng: 好的，你们改吧，明天早上我想看到你们改好并部署了。",
 		},
+		{
+			name:     "Skip_RaftWakeupWithAgentMessageOnly",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body: `{
+				"messages":[
+					{"role":"user","content":"New message received:\n\n[Raft thread context: you were mentioned in a thread]\nparent: #token_proxy\n\n[target=#token_proxy:dc0ac427 msg=a44d8159 time=2026-11-06 20:18:02Z type=agent] @韩立: @gemini 审完 00624971b，可以部署\n  │ 顺手修一处小问题\n\nRespond as appropriate. Complete all your work before stopping."}
+				]
+			}`,
+			want: "",
+		},
 	}
 
 	for _, tc := range cases {

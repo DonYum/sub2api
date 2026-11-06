@@ -423,8 +423,10 @@ func extractCleanUserInputTextAndRaftMessages(protocol string, body []byte) (str
 		if cleaned == "" || isSyntheticContinuationPrompt(cleaned) {
 			continue
 		}
-		if directRaft := parseDirectWakeupRaftMessages(cleaned); len(directRaft) > 0 {
-			raftMsgs = append(raftMsgs, directRaft...)
+		if strings.HasPrefix(strings.TrimSpace(cleaned), "[target=") {
+			if directRaft := parseDirectWakeupRaftMessages(cleaned); len(directRaft) > 0 {
+				raftMsgs = append(raftMsgs, directRaft...)
+			}
 			continue
 		}
 		cleanedParts = append(cleanedParts, cleaned)
