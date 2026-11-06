@@ -52,6 +52,10 @@ var (
 		regexp.MustCompile(`(?is)<command-message\b[^>]*>.*?</command-message>`),
 		regexp.MustCompile(`(?is)<command-args\b[^>]*>.*?</command-args>`),
 		regexp.MustCompile(`(?is)<acp\b[^>]*>.*?</acp>`),
+		regexp.MustCompile(`(?is)<session_context\b[^>]*>.*?</session_context>`),
+		regexp.MustCompile(`(?is)<recent-messages\b[^>]*>.*?</recent-messages>`),
+		regexp.MustCompile(`(?is)<objects-in-play\b[^>]*>.*?</objects-in-play>`),
+		regexp.MustCompile(`(?is)<recent-actions\b[^>]*>.*?</recent-actions>`),
 	}
 
 	// codexAgentsMdBlockRe 剥离 Codex CLI/Desktop 注入在首条 user 消息中的 `# AGENTS.md instructions ... </INSTRUCTIONS>` 块。
@@ -594,7 +598,9 @@ func isSyntheticContinuationPrompt(text string) bool {
 		}
 	}
 	if (strings.HasPrefix(lower, "<session>") && strings.Contains(lower, "write the title in the predominant language")) ||
-		strings.Contains(lower, "generate 0 to 3 hyperpersonalized suggestions for what this user can do with codex") {
+		strings.Contains(lower, "generate 0 to 3 hyperpersonalized suggestions for what this user can do with codex") ||
+		strings.HasPrefix(trimmed, "<recent-messages ") ||
+		strings.HasPrefix(trimmed, "<session_context>") {
 		return true
 	}
 	if strings.Contains(trimmed, "Respond with <severity>N</severity> ONLY") ||

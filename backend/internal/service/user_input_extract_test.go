@@ -340,6 +340,18 @@ func TestExtractSanitizedUserInput_ComprehensiveCases(t *testing.T) {
 			body:     `{"messages":[{"role":"user","content":"<local-command-caveat>caveat</local-command-caveat>\n<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args>opus</command-args>\n<local-command-stdout>Set model to opus</local-command-stdout>\n集团财务能稳定读到智能记账的结账状态"}]}`,
 			want:     "集团财务能稳定读到智能记账的结账状态",
 		},
+		{
+			name:     "GeminiCLI_StripSessionContextAndKeepUserPrompt",
+			protocol: ContentModerationProtocolGemini,
+			body:     `{"contents":[{"role":"user","parts":[{"text":"<session_context>\nThis is the Gemini CLI. We are setting up the context for our chat.\n├── outline_1.md\n</session_context>\n帮我看下这个项目的路由是怎么转发的"}]}]}`,
+			want:     "帮我看下这个项目的路由是怎么转发的",
+		},
+		{
+			name:     "Skip_RaftCompactionSummaryInjection",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body:     `{"messages":[{"role":"user","content":"<recent-messages order=\"newest last\">[target=#token_proxy]</recent-messages>\n<objects-in-play><object name=\"foo.go\"/></objects-in-play>\n<recent-actions>s1 Bash</recent-actions>"}]}`,
+			want:     "",
+		},
 	}
 
 	for _, tc := range cases {
