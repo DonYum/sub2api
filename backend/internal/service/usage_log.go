@@ -208,6 +208,9 @@ type UsageLog struct {
 	VideoResolution      *string
 	VideoDurationSeconds *int
 
+	// UserInput 是网关在转发前提取并脱敏的当轮纯净用户输入（仅管理端填充和可见）。
+	UserInput *string
+
 	CreatedAt time.Time
 
 	User         *User

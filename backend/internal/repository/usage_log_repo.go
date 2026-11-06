@@ -185,6 +185,7 @@ func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usage
 	repo := &usageLogRepository{client: client, sql: sqlq}
 	if db, ok := sqlq.(*sql.DB); ok {
 		repo.db = db
+		service.RegisterUsageUserInputStore(repo)
 	}
 	repo.bestEffortRecent = gocache.New(usageLogBestEffortRecentTTL, time.Minute)
 	return repo

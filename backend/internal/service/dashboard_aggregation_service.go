@@ -400,6 +400,12 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 	if dedupErr != nil {
 		logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_billing_dedup 保留清理失败: %v", dedupErr)
 	}
+	if store := getUsageUserInputStore(); store != nil {
+		inputCutoff := now.AddDate(0, 0, -userInputRetentionDays)
+		if _, err := store.CleanupExpiredUsageUserInputs(ctx, inputCutoff); err != nil {
+			logger.LegacyPrintf("service.dashboard_aggregation", "[DashboardAggregation] usage_user_inputs 保留清理失败: %v", err)
+		}
+	}
 	if aggErr == nil && usageErr == nil && dedupErr == nil {
 		s.lastRetentionCleanup.Store(now)
 	}

@@ -75,6 +75,18 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 			return nil
 		}
 	}
+	var apiKeyID int64
+	if apiKey != nil {
+		apiKeyID = apiKey.ID
+	}
+	service.CaptureAndEnqueueUsageUserInputFromContext(
+		c.Request.Context(),
+		apiKeyID,
+		subject.UserID,
+		protocol,
+		clientRequestedModel(c, model),
+		body,
+	)
 	if coordinator == nil {
 		legacyDecision := runContentModeration(c, reqLog, legacy, apiKey, subject, protocol, model, body)
 		if legacyDecision == nil {

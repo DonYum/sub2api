@@ -441,7 +441,45 @@ func (s *UsageService) ListWithFilters(ctx context.Context, params pagination.Pa
 	if err != nil {
 		return nil, nil, fmt.Errorf("list usage logs with filters: %w", err)
 	}
+	s.hydrateUsageLogUserInputs(ctx, logs)
 	return logs, result, nil
+}
+
+func (s *UsageService) hydrateUsageLogUserInputs(ctx context.Context, logs []UsageLog) {
+	if len(logs) == 0 {
+		return
+	}
+	var store UsageUserInputStore
+	if repoStore, ok := s.usageRepo.(UsageUserInputStore); ok {
+		store = repoStore
+	} else {
+		store = getUsageUserInputStore()
+	}
+	if store == nil {
+		return
+	}
+	keys := make([]UsageUserInputKey, 0, len(logs))
+	for i := range logs {
+		if logs[i].RequestID != "" && logs[i].APIKeyID > 0 {
+			keys = append(keys, UsageUserInputKey{
+				RequestID: logs[i].RequestID,
+				APIKeyID:  logs[i].APIKeyID,
+			})
+		}
+	}
+	if len(keys) == 0 {
+		return
+	}
+	inputs, err := store.BatchGetUsageUserInputs(ctx, keys)
+	if err != nil || len(inputs) == 0 {
+		return
+	}
+	for i := range logs {
+		if text, ok := inputs[UsageUserInputKey{RequestID: logs[i].RequestID, APIKeyID: logs[i].APIKeyID}]; ok && text != "" {
+			val := text
+			logs[i].UserInput = &val
+		}
+	}
 }
 
 // GetGlobalStats returns global usage stats for a time range.
