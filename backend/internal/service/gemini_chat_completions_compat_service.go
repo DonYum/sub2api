@@ -135,7 +135,8 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	// checkedPolicy 是循环内对当前 resp 的错误策略检查结果，未检查时为 nil。
 	var checkedPolicy *ErrorPolicyResult
 	maxAttempts := s.geminiMaxAttemptsPerAccount()
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
+	// 首字超时重试由 noteGeminiFirstOutputFailure 自己计数，不受同账号重试次数配置限制。
+	for attempt := 1; attempt <= max(maxAttempts, geminiFirstOutputMaxAttempts); attempt++ {
 		if hedgeFirstOutput {
 			raced, idHeader, err := s.raceGeminiStreamFirstOutput(ctx, c, account, buildReq, proxyURL)
 			if err != nil {
