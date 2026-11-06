@@ -79,16 +79,28 @@ var (
 	// raftInboxNoticeBlockRe 剥离 Raft 平台投递的 `[Raft inbox notice: ...]` 提醒块及其紧随的说明文字。
 	// 注意：必须匹配独占一行的 `]` 或无换行的单行 `]`，避免跨出 notice 块误吞后续 `New message received:`。
 	raftInboxNoticeBlockRe = regexp.MustCompile(`(?m)\[Raft inbox notice:(?:[^\n\]]*\]|[\s\S]*?\n\])(?:\s*\nThese messages have not been read\.[^\n]*)?`)
+
+	// raftMsgHeaderLineRe 匹配 Raft 消息行头（兼容 `raft message read` 的 `[1/8 seq=... msg=<id> ... type=<type>]`
+	// 与 `New message received:` 的 `[target=... msg=<id> ... type=<type>]` 格式）。
+	raftMsgHeaderLineRe = regexp.MustCompile(`^\s*\[(?:[0-9]+/[0-9]+\s+|target=[^\]]*?\s+)[^\]]*?\bmsg=([0-9a-fA-F-]+)[^\]]*?\btype=([a-zA-Z_]+)[^\]]*\]\s*(.*)$`)
+
+	// raftReadSubcommandRe 匹配命令行中的 `raft ... message read` 调用。
+	raftReadSubcommandRe = regexp.MustCompile(`\braft(?:\s+--?[a-zA-Z0-9_-]+(?:=\S+)?)*\s+message\s+read\b`)
+	// raftCheckSubcommandRe 匹配命令行中的 `raft ... message check` 调用。
+	raftCheckSubcommandRe = regexp.MustCompile(`\braft(?:\s+--?[a-zA-Z0-9_-]+(?:=\S+)?)*\s+message\s+check\b`)
+	// raftHistoryFlagRe 匹配翻查历史专用的参数，防止翻历史时重复入库旧消息。
+	raftHistoryFlagRe = regexp.MustCompile(`(?:^|\s)(?:--after|--around|--before|--seq)\b`)
 )
 
 // UsageUserInputRecord 表示一条已清洗、已脱敏并截断的用户输入记录。
 type UsageUserInputRecord struct {
-	RequestID string
-	APIKeyID  int64
-	UserID    int64
-	Model     string
-	UserInput string
-	CreatedAt time.Time
+	RequestID       string
+	APIKeyID        int64
+	UserID          int64
+	Model           string
+	UserInput       string
+	RaftMessages    []ExtractedRaftHumanMessage
+	CreatedAt       time.Time
 }
 
 type UsageUserInputKey struct {
@@ -103,11 +115,26 @@ type UsageUserInputStore interface {
 	CleanupExpiredUsageUserInputs(ctx context.Context, before time.Time) (int64, error)
 }
 
+// UsageUserInputRecentChecker 是可选扩展接口：用于检查某个 API Key 近期是否已记录过包含指定标记（如 Raft msg=<shortid>）的用户输入，
+// 确保同一个 API Key 下同一条 Raft 消息只存一次（跨重启亦生效）。
+type UsageUserInputRecentChecker interface {
+	FilterUnseenUsageUserInputMarkers(ctx context.Context, apiKeyID int64, since time.Time, markers []string) (map[string]bool, error)
+}
+
+// ExtractedRaftHumanMessage 表示从 `raft message read --unread` / `raft message check` 或唤醒消息中解析出的一条人类消息。
+type ExtractedRaftHumanMessage struct {
+	MsgShortID string
+	Formatted  string
+}
+
 var (
 	globalUserInputStoreMu sync.RWMutex
 	globalUserInputStore   UsageUserInputStore
 	globalUserInputQueue   chan UsageUserInputRecord
 	globalUserInputOnce    sync.Once
+
+	seenRaftMsgMu sync.Mutex
+	seenRaftMsgBy map[int64]map[string]time.Time
 )
 
 // RegisterUsageUserInputStore 注册全局的用户输入异步持久化存储并启动后台 Worker 与定期清理协程。
@@ -154,17 +181,28 @@ func CaptureAndEnqueueUsageUserInput(requestID string, apiKeyID, userID int64, p
 	if store == nil || globalUserInputQueue == nil {
 		return false
 	}
-	cleaned := ExtractSanitizedUserInput(protocol, body)
-	if cleaned == "" {
+	cleaned, raftMsgs := extractSanitizedUserInputAndRaftMessages(protocol, body)
+	if cleaned == "" && len(raftMsgs) == 0 {
 		return false
 	}
+	var clonedRaft []ExtractedRaftHumanMessage
+	if len(raftMsgs) > 0 {
+		clonedRaft = make([]ExtractedRaftHumanMessage, len(raftMsgs))
+		for i, m := range raftMsgs {
+			clonedRaft[i] = ExtractedRaftHumanMessage{
+				MsgShortID: strings.Clone(m.MsgShortID),
+				Formatted:  strings.Clone(m.Formatted),
+			}
+		}
+	}
 	rec := UsageUserInputRecord{
-		RequestID: requestID,
-		APIKeyID:  apiKeyID,
-		UserID:    userID,
-		Model:     strings.TrimSpace(model),
-		UserInput: strings.Clone(cleaned),
-		CreatedAt: time.Now().UTC(),
+		RequestID:    requestID,
+		APIKeyID:     apiKeyID,
+		UserID:       userID,
+		Model:        strings.TrimSpace(model),
+		UserInput:    strings.Clone(cleaned),
+		RaftMessages: clonedRaft,
+		CreatedAt:    time.Now().UTC(),
 	}
 	select {
 	case globalUserInputQueue <- rec:
@@ -182,11 +220,113 @@ func runUsageUserInputWorker() {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), userInputPersistTimeout)
-		if err := store.SaveUsageUserInput(ctx, rec); err != nil {
-			slog.Warn("usage_user_input.save_failed", "request_id", rec.RequestID, "api_key_id", rec.APIKeyID, "error", err)
+		finalInput := finalizeUsageUserInputForSave(ctx, store, rec)
+		if finalInput != "" {
+			rec.UserInput = finalInput
+			if err := store.SaveUsageUserInput(ctx, rec); err != nil {
+				slog.Warn("usage_user_input.save_failed", "request_id", rec.RequestID, "api_key_id", rec.APIKeyID, "error", err)
+			}
 		}
 		cancel()
 	}
+}
+
+func finalizeUsageUserInputForSave(ctx context.Context, store UsageUserInputStore, rec UsageUserInputRecord) string {
+	var parts []string
+	if s := strings.TrimSpace(rec.UserInput); s != "" {
+		parts = append(parts, s)
+	}
+	if len(rec.RaftMessages) > 0 {
+		unseen := filterUnseenRaftMessagesForAPIKey(ctx, store, rec.APIKeyID, rec.RaftMessages)
+		for _, m := range unseen {
+			if s := strings.TrimSpace(m.Formatted); s != "" {
+				parts = append(parts, s)
+			}
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return trimRunes(strings.TrimSpace(strings.Join(parts, "\n")), maxExtractedUserInputRunes)
+}
+
+func filterUnseenRaftMessagesForAPIKey(ctx context.Context, store UsageUserInputStore, apiKeyID int64, msgs []ExtractedRaftHumanMessage) []ExtractedRaftHumanMessage {
+	if len(msgs) == 0 || apiKeyID <= 0 {
+		return msgs
+	}
+
+	now := time.Now().UTC()
+	cutoff := now.AddDate(0, 0, -userInputRetentionDays)
+
+	// 1. 先过内存去重表与批次内去重，收集尚未在内存命中的候选 marker（"msg=" + shortID）
+	var candidates []ExtractedRaftHumanMessage
+	var markers []string
+	seenInBatch := make(map[string]struct{}, len(msgs))
+
+	seenRaftMsgMu.Lock()
+	if seenRaftMsgBy == nil {
+		seenRaftMsgBy = make(map[int64]map[string]time.Time)
+	}
+	keyMap := seenRaftMsgBy[apiKeyID]
+	if keyMap == nil {
+		keyMap = make(map[string]time.Time)
+		seenRaftMsgBy[apiKeyID] = keyMap
+	}
+	for k, ts := range keyMap {
+		if ts.Before(cutoff) {
+			delete(keyMap, k)
+		}
+	}
+	for _, m := range msgs {
+		shortID := strings.ToLower(strings.TrimSpace(m.MsgShortID))
+		if shortID == "" {
+			candidates = append(candidates, m)
+			continue
+		}
+		if _, dup := seenInBatch[shortID]; dup {
+			continue
+		}
+		seenInBatch[shortID] = struct{}{}
+		if _, exists := keyMap[shortID]; exists {
+			continue
+		}
+		candidates = append(candidates, m)
+		markers = append(markers, "msg="+shortID)
+	}
+	seenRaftMsgMu.Unlock()
+
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	// 2. 若 Store 实现了 UsageUserInputRecentChecker，则进一步查库去重（防服务重启后重复落库）
+	var alreadyInDB map[string]bool
+	if checker, ok := store.(UsageUserInputRecentChecker); ok && len(markers) > 0 {
+		if existing, err := checker.FilterUnseenUsageUserInputMarkers(ctx, apiKeyID, cutoff, markers); err == nil {
+			alreadyInDB = existing
+		}
+	}
+
+	var kept []ExtractedRaftHumanMessage
+	seenRaftMsgMu.Lock()
+	keyMap = seenRaftMsgBy[apiKeyID]
+	for _, m := range candidates {
+		shortID := strings.ToLower(strings.TrimSpace(m.MsgShortID))
+		if shortID != "" {
+			marker := "msg=" + shortID
+			if alreadyInDB != nil && alreadyInDB[marker] {
+				keyMap[shortID] = now
+				continue
+			}
+			if _, exists := keyMap[shortID]; exists {
+				continue
+			}
+			keyMap[shortID] = now
+		}
+		kept = append(kept, m)
+	}
+	seenRaftMsgMu.Unlock()
+	return kept
 }
 
 func runUsageUserInputCleanupWorker() {
@@ -208,27 +348,50 @@ func runUsageUserInputCleanupWorker() {
 
 // ExtractSanitizedUserInput 从网关请求体中提取当轮纯净的用户输入：
 //  1. 与 upstream 的 content_moderation_input.go 完全解耦，不修改任何现有审核逻辑；
-//  2. 先快速检查请求末尾是否为非 tool_result 的 user 文本消息（直接短路掉 67%+ 的工具循环请求，避免无谓扫描大段 system 提示词）；
+//  2. 先快速检查请求末尾是否为非 tool_result 的 user 文本消息，或最新一轮 `raft message read ... --unread` / `raft message check` 工具返回结果；
 //  3. 识别并排除 Coding Agent 后台伴生守护请求（安全审查、会话标题生成、上下文压缩、状态分类、连接探活、Raft inbox notice、worker_report 工单等）；
-//  4. 保留 Raft `New message received:` 中同事发给 Agent 的真实指令；
+//  4. 保留 Raft `New message received:` 中同事发给 Agent 的真实指令，以及 Agent 刚通过 `--unread` / `check` 拉取到的 `type=human` 消息；
 //  5. 剥离 <system-reminder>、<environment_context> 等内联噪音块，保留同块内的真实用户提问；
 //  6. 复用 redactContentModerationSecrets 脱敏敏感凭据，并截断至 4000 字符以内，供异步队列安全传输。
 func ExtractSanitizedUserInput(protocol string, body []byte) string {
-	raw := extractCleanUserInputText(protocol, body)
-	if raw == "" {
+	cleaned, raftMsgs := extractSanitizedUserInputAndRaftMessages(protocol, body)
+	var parts []string
+	if cleaned != "" {
+		parts = append(parts, cleaned)
+	}
+	for _, m := range raftMsgs {
+		if m.Formatted != "" {
+			parts = append(parts, m.Formatted)
+		}
+	}
+	if len(parts) == 0 {
 		return ""
 	}
-	redacted := redactContentModerationSecrets(raw)
-	return trimRunes(strings.TrimSpace(redacted), maxExtractedUserInputRunes)
+	return trimRunes(strings.TrimSpace(strings.Join(parts, "\n")), maxExtractedUserInputRunes)
 }
 
-func extractCleanUserInputText(protocol string, body []byte) string {
+func extractSanitizedUserInputAndRaftMessages(protocol string, body []byte) (string, []ExtractedRaftHumanMessage) {
+	raw, raftMsgs := extractCleanUserInputTextAndRaftMessages(protocol, body)
+	var cleaned string
+	if raw != "" {
+		redacted := redactContentModerationSecrets(raw)
+		cleaned = trimRunes(strings.TrimSpace(redacted), maxExtractedUserInputRunes)
+	}
+	if len(raftMsgs) > 0 {
+		for i := range raftMsgs {
+			redacted := redactContentModerationSecrets(raftMsgs[i].Formatted)
+			raftMsgs[i].Formatted = trimRunes(strings.TrimSpace(redacted), maxExtractedUserInputRunes)
+		}
+	}
+	return cleaned, raftMsgs
+}
+
+func extractCleanUserInputTextAndRaftMessages(protocol string, body []byte) (string, []ExtractedRaftHumanMessage) {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return ""
+		return "", nil
 	}
 
 	// 第一步（性能优化）：先检查请求末尾是否为有效 user 文本消息。
-	// 67% 以上的工具循环请求（tool_result / function_call_output / tool / assistant）在此处直接返回，无需扫描庞大的 system 字段。
 	var rawTexts []string
 	switch protocol {
 	case ContentModerationProtocolAnthropicMessages:
@@ -253,28 +416,37 @@ func extractCleanUserInputText(protocol string, body []byte) string {
 		}
 	}
 
-	if len(rawTexts) == 0 {
-		return ""
-	}
-
-	// 第二步：先清洗末尾 user 文本段并剔除合成/守护提示词。
 	var cleanedParts []string
+	var raftMsgs []ExtractedRaftHumanMessage
 	for _, t := range rawTexts {
 		cleaned := cleanSingleUserTextSegment(t)
-		if cleaned != "" && !isSyntheticContinuationPrompt(cleaned) {
-			cleanedParts = append(cleanedParts, cleaned)
+		if cleaned == "" || isSyntheticContinuationPrompt(cleaned) {
+			continue
 		}
+		if directRaft := parseDirectWakeupRaftMessages(cleaned); len(directRaft) > 0 {
+			raftMsgs = append(raftMsgs, directRaft...)
+			continue
+		}
+		cleanedParts = append(cleanedParts, cleaned)
 	}
-	if len(cleanedParts) == 0 {
-		return ""
+
+	// 第二步：检查最新一轮工具返回结果是否为 `raft message read ... --unread` 或 `raft message check`，
+	// 若是则从中提取 `type=human` 的人类消息（兼容 Anthropic Messages、OpenAI Responses/Chat、Gemini）。
+	toolRaftMsgs := extractTrailingUnreadRaftToolMessages(protocol, body)
+	if len(toolRaftMsgs) > 0 {
+		raftMsgs = append(raftMsgs, toolRaftMsgs...)
+	}
+
+	if len(cleanedParts) == 0 && len(raftMsgs) == 0 {
+		return "", nil
 	}
 
 	// 第三步：仅对通过前两步的少数候选请求检查 system/instructions 是否为后台守护任务（标题生成、安全审查、摘要压缩等）。
 	if isAgentBackgroundHelperRequest(body) {
-		return ""
+		return "", nil
 	}
 
-	return strings.Join(cleanedParts, "\n")
+	return strings.Join(cleanedParts, "\n"), dedupeExtractedRaftMessagesInSlice(raftMsgs)
 }
 
 // isAgentBackgroundHelperRequest 识别 Coding Agent 自动发起的后台伴生请求（非人类直接输入）。
@@ -679,4 +851,513 @@ func isSyntheticContinuationPrompt(text string) bool {
 		return true
 	}
 	return false
+}
+
+// extractTrailingUnreadRaftToolMessages 严格按 4 条规则从最新一轮工具返回结果中提取 Raft 人类消息：
+//  1. 只看本次请求里最新一轮的工具返回结果（不扫描更早轮次的历史工具结果）；
+//  2. 往前匹配该工具返回对应的命令调用，必须是 `raft message read ... --unread` 或 `raft message check`（含 `--after`、`--around` 或不带 `--unread` 的 read 一律跳过）；
+//  3. 在命令返回结果里只取 `type=human` 的消息（连同下方 `│` 开头的续行，忽略 `type=agent` 和 `type=system`）；
+//  4. 格式化输出包含发送人与 8 位短消息 ID，供按 `(api_key_id, msg_short_id)` 去重。
+func extractTrailingUnreadRaftToolMessages(protocol string, body []byte) []ExtractedRaftHumanMessage {
+	switch protocol {
+	case ContentModerationProtocolAnthropicMessages:
+		return extractUnreadRaftFromMessagesArray(gjson.GetBytes(body, "messages"), true)
+	case ContentModerationProtocolOpenAIChat:
+		return extractUnreadRaftFromMessagesArray(gjson.GetBytes(body, "messages"), false)
+	case ContentModerationProtocolOpenAIResponses:
+		return extractUnreadRaftFromResponsesInput(gjson.GetBytes(body, "input"))
+	case ContentModerationProtocolGemini:
+		return extractUnreadRaftFromGeminiContents(gjson.GetBytes(body, "contents"))
+	default:
+		if msgs := extractUnreadRaftFromResponsesInput(gjson.GetBytes(body, "input")); len(msgs) > 0 {
+			return msgs
+		}
+		if msgs := extractUnreadRaftFromMessagesArray(gjson.GetBytes(body, "messages"), true); len(msgs) > 0 {
+			return msgs
+		}
+		return extractUnreadRaftFromGeminiContents(gjson.GetBytes(body, "contents"))
+	}
+}
+
+func extractUnreadRaftFromMessagesArray(messages gjson.Result, skipTrailingSystem bool) []ExtractedRaftHumanMessage {
+	if !messages.IsArray() {
+		return nil
+	}
+	arr := messages.Array()
+	if len(arr) == 0 {
+		return nil
+	}
+	end := len(arr) - 1
+	if skipTrailingSystem {
+		for end >= 0 && strings.ToLower(strings.TrimSpace(arr[end].Get("role").String())) == "system" {
+			end--
+		}
+	}
+	if end < 0 {
+		return nil
+	}
+
+	lastRole := strings.ToLower(strings.TrimSpace(arr[end].Get("role").String()))
+
+	// 场景 A：OpenAI Chat Completions 末尾为连续 `role="tool"` 消息
+	if lastRole == "tool" {
+		start := end
+		for start > 0 && strings.ToLower(strings.TrimSpace(arr[start-1].Get("role").String())) == "tool" {
+			start--
+		}
+		cmdByID := collectToolCommandsFromMessages(arr[:start])
+		var out []ExtractedRaftHumanMessage
+		for i := start; i <= end; i++ {
+			callID := strings.TrimSpace(arr[i].Get("tool_call_id").String())
+			if callID == "" || !isUnreadRaftReadOrCheckCommand(cmdByID[callID]) {
+				continue
+			}
+			var texts []string
+			collectPlainTexts(arr[i].Get("content"), &texts)
+			out = append(out, parseRaftHumanMessagesFromToolOutput(strings.Join(texts, "\n"), false)...)
+		}
+		return out
+	}
+
+	// 场景 B：Anthropic Messages 末尾 `role="user"` 消息内含 `type="tool_result"` 块
+	if lastRole == "user" {
+		content := arr[end].Get("content")
+		if !content.IsArray() {
+			return nil
+		}
+		blocks := content.Array()
+		var toolResults []gjson.Result
+		for _, b := range blocks {
+			if strings.ToLower(strings.TrimSpace(b.Get("type").String())) == "tool_result" {
+				toolResults = append(toolResults, b)
+			}
+		}
+		if len(toolResults) == 0 {
+			return nil
+		}
+		cmdByID := collectToolCommandsFromMessages(arr[:end])
+		var out []ExtractedRaftHumanMessage
+		for _, tr := range toolResults {
+			toolUseID := strings.TrimSpace(tr.Get("tool_use_id").String())
+			if toolUseID == "" || !isUnreadRaftReadOrCheckCommand(cmdByID[toolUseID]) {
+				continue
+			}
+			var texts []string
+			collectPlainTexts(tr.Get("content"), &texts)
+			out = append(out, parseRaftHumanMessagesFromToolOutput(strings.Join(texts, "\n"), false)...)
+		}
+		return out
+	}
+
+	return nil
+}
+
+func collectToolCommandsFromMessages(prior []gjson.Result) map[string]string {
+	out := make(map[string]string)
+	for i := len(prior) - 1; i >= 0; i-- {
+		m := prior[i]
+		if strings.ToLower(strings.TrimSpace(m.Get("role").String())) != "assistant" {
+			continue
+		}
+		// Anthropic `content` array with `type="tool_use"`
+		if c := m.Get("content"); c.IsArray() {
+			for _, item := range c.Array() {
+				if strings.ToLower(strings.TrimSpace(item.Get("type").String())) == "tool_use" {
+					id := strings.TrimSpace(item.Get("id").String())
+					cmd := extractCommandStringFromToolInput(item.Get("input"))
+					if id != "" && cmd != "" {
+						out[id] = cmd
+					}
+				}
+			}
+		}
+		// OpenAI Chat `tool_calls` array
+		if tcs := m.Get("tool_calls"); tcs.IsArray() {
+			for _, tc := range tcs.Array() {
+				id := strings.TrimSpace(tc.Get("id").String())
+				cmd := extractCommandStringFromToolInput(tc.Get("function.arguments"))
+				if id != "" && cmd != "" {
+					out[id] = cmd
+				}
+			}
+		}
+	}
+	return out
+}
+
+func extractUnreadRaftFromResponsesInput(input gjson.Result) []ExtractedRaftHumanMessage {
+	if !input.IsArray() {
+		return nil
+	}
+	arr := input.Array()
+	if len(arr) == 0 {
+		return nil
+	}
+	end := len(arr) - 1
+	if !isResponsesToolOutputItem(arr[end]) {
+		return nil
+	}
+	start := end
+	for start > 0 && isResponsesToolOutputItem(arr[start-1]) {
+		start--
+	}
+
+	cmdByCallID := make(map[string]string)
+	for i := 0; i < start; i++ {
+		item := arr[i]
+		typ := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
+		if typ == "function_call" || typ == "custom_tool_call" {
+			callID := strings.TrimSpace(item.Get("call_id").String())
+			if callID == "" {
+				callID = strings.TrimSpace(item.Get("id").String())
+			}
+			cmd := extractCommandStringFromToolInput(item.Get("arguments"))
+			if cmd == "" {
+				cmd = extractCommandStringFromToolInput(item.Get("input"))
+			}
+			if callID != "" && cmd != "" {
+				cmdByCallID[callID] = cmd
+			}
+		}
+	}
+
+	var out []ExtractedRaftHumanMessage
+	for i := start; i <= end; i++ {
+		item := arr[i]
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if callID == "" || !isUnreadRaftReadOrCheckCommand(cmdByCallID[callID]) {
+			continue
+		}
+		var texts []string
+		collectPlainTexts(item.Get("output"), &texts)
+		out = append(out, parseRaftHumanMessagesFromToolOutput(strings.Join(texts, "\n"), false)...)
+	}
+	return out
+}
+
+func isResponsesToolOutputItem(item gjson.Result) bool {
+	typ := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
+	return typ == "function_call_output" || typ == "custom_tool_call_output"
+}
+
+func extractUnreadRaftFromGeminiContents(contents gjson.Result) []ExtractedRaftHumanMessage {
+	if !contents.IsArray() {
+		return nil
+	}
+	arr := contents.Array()
+	if len(arr) == 0 {
+		return nil
+	}
+	last := arr[len(arr)-1]
+	role := strings.ToLower(strings.TrimSpace(last.Get("role").String()))
+	if role != "" && role != "user" {
+		return nil
+	}
+	parts := last.Get("parts")
+	if !parts.IsArray() {
+		return nil
+	}
+
+	var funcResponses []gjson.Result
+	for _, p := range parts.Array() {
+		if fr := p.Get("functionResponse"); fr.Exists() {
+			funcResponses = append(funcResponses, fr)
+		}
+	}
+	if len(funcResponses) == 0 {
+		return nil
+	}
+
+	// 从紧邻的上一轮 model parts 中收集 functionCall 命令
+	var modelCmds []string
+	for i := len(arr) - 2; i >= 0; i-- {
+		r := strings.ToLower(strings.TrimSpace(arr[i].Get("role").String()))
+		if r == "model" || r == "assistant" {
+			if mParts := arr[i].Get("parts"); mParts.IsArray() {
+				for _, mp := range mParts.Array() {
+					if fc := mp.Get("functionCall"); fc.Exists() {
+						if cmd := extractCommandStringFromToolInput(fc.Get("args")); cmd != "" {
+							modelCmds = append(modelCmds, cmd)
+						}
+					}
+				}
+			}
+			break
+		}
+	}
+
+	var out []ExtractedRaftHumanMessage
+	for idx, fr := range funcResponses {
+		matchedCmd := ""
+		if idx < len(modelCmds) {
+			matchedCmd = modelCmds[idx]
+		} else if len(modelCmds) == 1 {
+			matchedCmd = modelCmds[0]
+		}
+		if !isUnreadRaftReadOrCheckCommand(matchedCmd) {
+			continue
+		}
+		var texts []string
+		collectPlainTexts(fr.Get("response"), &texts)
+		out = append(out, parseRaftHumanMessagesFromToolOutput(strings.Join(texts, "\n"), false)...)
+	}
+	return out
+}
+
+func extractCommandStringFromToolInput(val gjson.Result) string {
+	if !val.Exists() {
+		return ""
+	}
+	if val.Type == gjson.String {
+		raw := strings.TrimSpace(val.String())
+		if strings.HasPrefix(raw, "{") && gjson.Valid(raw) {
+			return extractCommandStringFromToolInput(gjson.Parse(raw))
+		}
+		return raw
+	}
+	if val.IsObject() {
+		for _, key := range []string{"command", "cmd"} {
+			v := val.Get(key)
+			if v.Type == gjson.String {
+				return strings.TrimSpace(v.String())
+			}
+			if v.IsArray() {
+				var parts []string
+				for _, item := range v.Array() {
+					if s := strings.TrimSpace(item.String()); s != "" {
+						parts = append(parts, s)
+					}
+				}
+				if len(parts) > 0 {
+					return strings.Join(parts, " ")
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// isUnreadRaftReadOrCheckCommand 判断命令是否为读取新消息的 `raft message read ... --unread` 或 `raft message check`。
+// 任何带有 `--after`、`--around`、`--before`、`--seq` 或不带 `--unread` 的 `raft message read` 均视为翻历史，返回 false。
+func isUnreadRaftReadOrCheckCommand(cmd string) bool {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" || !strings.Contains(cmd, "raft") {
+		return false
+	}
+	segments := strings.FieldsFunc(cmd, func(r rune) bool {
+		return r == '\n' || r == ';' || r == '&' || r == '|'
+	})
+	hasValidUnreadCmd := false
+	for _, seg := range segments {
+		seg = strings.TrimSpace(seg)
+		if seg == "" || !strings.Contains(seg, "raft") {
+			continue
+		}
+		if strings.Contains(seg, "--help") || strings.Contains(seg, " -h") {
+			continue
+		}
+		if raftCheckSubcommandRe.MatchString(seg) {
+			hasValidUnreadCmd = true
+			continue
+		}
+		if raftReadSubcommandRe.MatchString(seg) {
+			if raftHistoryFlagRe.MatchString(seg) {
+				return false
+			}
+			if strings.Contains(seg, "--unread") {
+				hasValidUnreadCmd = true
+			}
+		}
+	}
+	return hasValidUnreadCmd
+}
+
+func parseDirectWakeupRaftMessages(text string) []ExtractedRaftHumanMessage {
+	if !strings.HasPrefix(strings.TrimSpace(text), "[target=") {
+		return nil
+	}
+	return parseRaftHumanMessagesFromToolOutput(text, true)
+}
+
+func parseRaftHumanMessagesFromToolOutput(output string, keepFullHeader bool) []ExtractedRaftHumanMessage {
+	if strings.TrimSpace(output) == "" {
+		return nil
+	}
+	// 若工具输出是 JSON 包装（如 `{"output":"..."}`），先解包
+	trimmedOut := strings.TrimSpace(output)
+	if strings.HasPrefix(trimmedOut, "{") && gjson.Valid(trimmedOut) {
+		var inner []string
+		collectPlainTexts(gjson.Parse(trimmedOut).Get("output"), &inner)
+		if len(inner) == 0 {
+			collectPlainTexts(gjson.Parse(trimmedOut).Get("content"), &inner)
+		}
+		if len(inner) > 0 {
+			output = strings.Join(inner, "\n")
+		}
+	}
+
+	lines := strings.Split(output, "\n")
+	var results []ExtractedRaftHumanMessage
+	var curMsgID string
+	var curHeaderLine string
+	var curSenderAndFirstLine string
+	var curContLines []string
+	inHuman := false
+
+	flushCurrent := func() {
+		if !inHuman {
+			return
+		}
+		shortID := normalizeRaftMsgShortID(curMsgID)
+		var formatted string
+		if keepFullHeader {
+			all := []string{curHeaderLine}
+			all = append(all, curContLines...)
+			formatted = strings.TrimSpace(strings.Join(all, "\n"))
+		} else {
+			body := normalizeRaftSenderBody(curSenderAndFirstLine)
+			if len(curContLines) > 0 {
+				var cleanedCont []string
+				for _, cl := range curContLines {
+					cleanedCont = append(cleanedCont, stripRaftContinuationPrefix(cl))
+				}
+				if body != "" {
+					body = body + "\n" + strings.Join(cleanedCont, "\n")
+				} else {
+					body = strings.Join(cleanedCont, "\n")
+				}
+			}
+			body = strings.TrimSpace(body)
+			if body != "" {
+				if shortID != "" {
+					formatted = "[msg=" + shortID + "] " + body
+				} else {
+					formatted = body
+				}
+			}
+		}
+		if formatted != "" {
+			results = append(results, ExtractedRaftHumanMessage{
+				MsgShortID: shortID,
+				Formatted:  formatted,
+			})
+		}
+		inHuman = false
+		curMsgID = ""
+		curHeaderLine = ""
+		curSenderAndFirstLine = ""
+		curContLines = nil
+	}
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// 跳过引用上下文中的 `- [msg=...]` 列表项
+		if strings.HasPrefix(trimmed, "- [") {
+			continue
+		}
+		if m := raftMsgHeaderLineRe.FindStringSubmatch(line); len(m) == 4 {
+			flushCurrent()
+			msgID := strings.TrimSpace(m[1])
+			msgType := strings.ToLower(strings.TrimSpace(m[2]))
+			rest := strings.TrimSpace(m[3])
+			if msgType == "human" {
+				inHuman = true
+				curMsgID = msgID
+				curHeaderLine = strings.TrimRight(line, "\r")
+				curSenderAndFirstLine = rest
+			}
+			continue
+		}
+		if inHuman {
+			if isRaftContinuationLine(line) {
+				curContLines = append(curContLines, strings.TrimRight(line, "\r"))
+				continue
+			}
+			if keepFullHeader && !isRaftFooterLine(trimmed) && trimmed != "" {
+				curContLines = append(curContLines, strings.TrimRight(line, "\r"))
+				continue
+			}
+			flushCurrent()
+		}
+	}
+	flushCurrent()
+	return dedupeExtractedRaftMessagesInSlice(results)
+}
+
+func isRaftContinuationLine(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return strings.HasPrefix(trimmed, "│")
+}
+
+func stripRaftContinuationPrefix(line string) string {
+	trimmed := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmed, "│") {
+		trimmed = strings.TrimPrefix(trimmed, "│")
+		return strings.TrimPrefix(trimmed, " ")
+	}
+	return trimmed
+}
+
+func isRaftFooterLine(trimmed string) bool {
+	for _, prefix := range []string{
+		"Read position:",
+		"No more unread",
+		"End of window:",
+		"Unread window:",
+		"Read window:",
+		"Coverage:",
+		"Server unread cursor",
+		"Respond as appropriate.",
+		"Reply in the channel",
+		"Some unread channels",
+		"Run `raft inbox check`",
+	} {
+		if strings.HasPrefix(trimmed, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeRaftSenderBody 将 `@yunfeng (Asia/Shanghai): 你觉得呢` 简化为 `@yunfeng: 你觉得呢`。
+func normalizeRaftSenderBody(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "@") {
+		return s
+	}
+	colonIdx := strings.Index(s, ":")
+	if colonIdx <= 1 {
+		return s
+	}
+	senderPart := strings.TrimSpace(s[:colonIdx])
+	if parenIdx := strings.Index(senderPart, " ("); parenIdx > 1 && strings.HasSuffix(senderPart, ")") {
+		senderPart = strings.TrimSpace(senderPart[:parenIdx])
+	}
+	return senderPart + ": " + strings.TrimSpace(s[colonIdx+1:])
+}
+
+func normalizeRaftMsgShortID(id string) string {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if len(id) > 8 {
+		return id[:8]
+	}
+	return id
+}
+
+func dedupeExtractedRaftMessagesInSlice(msgs []ExtractedRaftHumanMessage) []ExtractedRaftHumanMessage {
+	if len(msgs) <= 1 {
+		return msgs
+	}
+	seen := make(map[string]struct{}, len(msgs))
+	out := make([]ExtractedRaftHumanMessage, 0, len(msgs))
+	for _, m := range msgs {
+		if m.MsgShortID != "" {
+			if _, ok := seen[m.MsgShortID]; ok {
+				continue
+			}
+			seen[m.MsgShortID] = struct{}{}
+		}
+		out = append(out, m)
+	}
+	return out
 }

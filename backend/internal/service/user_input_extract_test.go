@@ -388,6 +388,76 @@ func TestExtractSanitizedUserInput_ComprehensiveCases(t *testing.T) {
 			body:     `{"messages":[{"role":"user","content":"New message received:\n\n[Raft thread context: you were mentioned in a thread without model-visible context.]\nparent: #token_proxy\nthread: #token_proxy:dc0ac427\n\nRecent thread context (truncated):\n- [msg=232878c1 seq=20792183 time=2026-11-06 14:16:34Z type=agent] @gemini: 剥离 [Image: original ...]\n\n[target=#token_proxy:dc0ac427 msg=4cf94ab9 time=2026-11-06 15:20:25Z type=human] @yunfeng (Asia/Shanghai): @gemini 你采集的信息全吗？为啥没有“云风”的？\n\nRespond as appropriate. Complete all your work before stopping."}]}`,
 			want:     "[target=#token_proxy:dc0ac427 msg=4cf94ab9 time=2026-11-06 15:20:25Z type=human] @yunfeng (Asia/Shanghai): @gemini 你采集的信息全吗？为啥没有“云风”的？",
 		},
+		{
+			name:     "RaftTool_Anthropic_UnreadReadExtractsHumanWithContinuationAndIgnoresAgent",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body: `{
+				"messages":[
+					{"role":"user","content":"[Raft inbox notice:\nInbox update: 2 messages pending\n]\nThese messages have not been read."},
+					{"role":"assistant","content":[{"type":"tool_use","id":"toolu_read1","name":"Bash","input":{"command":"raft message read --target \"#token_proxy:dc0ac427\" --unread"}}]},
+					{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_read1","content":"Unread window: 3 returned, seq 20814827-20814968, oldest to newest.\n\n[1/3 seq=20814827 msg=41b202d8-484f-42ed-b913-8674b9710e68 time=2026-11-06 18:53:26Z type=human] @yunfeng (Asia/Shanghai): 还是没看到“云风”在raft 里发起的调用信息啊\n  │ 第二行补充说明\n[2/3 seq=20814878 msg=9a9c1c41-7ca0-4d8e-9da2-8904c162b72c time=2026-11-06 18:54:26Z type=agent] @韩立: 更正我之前说的\n  │ - 子项\n[3/3 seq=20814968 msg=1b535781-10da-41e4-9ea4-60bcd91d174c time=2026-11-06 18:55:54Z type=human] @yunfeng (Asia/Shanghai): @韩立 你觉得呢\n\nRead position: seq 20814265 → 20814968."}]}
+				]
+			}`,
+			want: "[msg=41b202d8] @yunfeng: 还是没看到“云风”在raft 里发起的调用信息啊\n第二行补充说明\n[msg=1b535781] @yunfeng: @韩立 你觉得呢",
+		},
+		{
+			name:     "RaftTool_Anthropic_SkipHistoryReadWithAfterOrWithoutUnread",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body: `{
+				"messages":[
+					{"role":"assistant","content":[{"type":"tool_use","id":"toolu_hist","name":"Bash","input":{"command":"raft message read --target \"#token_proxy:dc0ac427\" --after 20788522"}}]},
+					{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_hist","content":"[1/1 seq=20788523 msg=14b2d241-5eff-4fef-bda2-a73521d1805b time=2026-11-06 13:37:44Z type=human] @yunfeng (Asia/Shanghai): @gemini 继续看上面的问题"}]}
+				]
+			}`,
+			want: "",
+		},
+		{
+			name:     "RaftTool_Anthropic_OnlyLatestToolTurnInspected",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body: `{
+				"messages":[
+					{"role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"raft message read --target \"#token_proxy:dc0ac427\" --unread"}}]},
+					{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"[1/1 seq=1 msg=41b202d8-484f-42ed-b913-8674b9710e68 time=2026-11-06 18:53:26Z type=human] @yunfeng: 第一轮已读消息"}]},
+					{"role":"assistant","content":[{"type":"tool_use","id":"toolu_2","name":"Bash","input":{"command":"git status -s"}}]},
+					{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_2","content":"M backend/internal/service/user_input_extract.go"}]}
+				]
+			}`,
+			want: "",
+		},
+		{
+			name:     "RaftTool_OpenAIResponses_SlockDaemonShellCommandArrayAndMessageCheck",
+			protocol: ContentModerationProtocolOpenAIResponses,
+			body: `{
+				"input":[
+					{"type":"message","role":"user","content":[{"type":"input_text","text":"[Raft inbox notice:\nInbox update: 1 message pending\n]"}]},
+					{"type":"function_call","call_id":"call_raft_1","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"raft message check\"]}"},
+					{"type":"function_call_output","call_id":"call_raft_1","output":"{\"output\":\"Exit code: 0\\nOutput:\\n[target=#oppo_watch msg=cb32a0e6 time=2026-11-06 15:54:58Z type=human] @yunfeng (Asia/Shanghai): @韩立 你去找一下有没有合适的开源的项目。\\n[target=#oppo_watch:cb32a0e6 msg=53390d8a time=2026-11-06 15:55:10Z type=agent] @韩立: 收到\"}"}
+				]
+			}`,
+			want: "[msg=cb32a0e6] @yunfeng: @韩立 你去找一下有没有合适的开源的项目。",
+		},
+		{
+			name:     "RaftTool_OpenAIChat_ToolRoleUnreadRead",
+			protocol: ContentModerationProtocolOpenAIChat,
+			body: `{
+				"messages":[
+					{"role":"assistant","tool_calls":[{"id":"call_chat_1","type":"function","function":{"name":"bash","arguments":"{\"command\":\"raft message read --target \\\"#oppo_watch\\\" --unread\"}"}}]},
+					{"role":"tool","tool_call_id":"call_chat_1","content":"[1/1 seq=20801391 msg=cb32a0e6-706e-4b02-a24e-18c2b4e4d619 time=2026-11-06 15:54:58Z type=human] @yunfeng (Asia/Shanghai): @韩立 你去找一下有没有合适的开源的项目。"}
+				]
+			}`,
+			want: "[msg=cb32a0e6] @yunfeng: @韩立 你去找一下有没有合适的开源的项目。",
+		},
+		{
+			name:     "RaftTool_Gemini_FunctionResponseUnreadRead",
+			protocol: ContentModerationProtocolGemini,
+			body: `{
+				"contents":[
+					{"role":"model","parts":[{"functionCall":{"name":"bash","args":{"command":"raft message read --target \"#token_proxy:dc0ac427\" --unread"}}}]},
+					{"role":"user","parts":[{"functionResponse":{"name":"bash","response":{"content":"[1/1 seq=20815202 msg=cdac32ef-d6bb-48d9-b613-4321c2600d42 time=2026-11-06 18:59:47Z type=human] @yunfeng (Asia/Shanghai): 好的，你们改吧，明天早上我想看到你们改好并部署了。"}}}]}
+				]
+			}`,
+			want: "[msg=cdac32ef] @yunfeng: 好的，你们改吧，明天早上我想看到你们改好并部署了。",
+		},
 	}
 
 	for _, tc := range cases {
@@ -432,8 +502,61 @@ func (s *memoryUserInputStore) CleanupExpiredUsageUserInputs(_ context.Context, 
 	return 0, nil
 }
 
+func (s *memoryUserInputStore) FilterUnseenUsageUserInputMarkers(_ context.Context, apiKeyID int64, _ time.Time, markers []string) (map[string]bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make(map[string]bool)
+	for k, v := range s.records {
+		if k.APIKeyID != apiKeyID {
+			continue
+		}
+		for _, m := range markers {
+			if m != "" && containsIgnoreCase(v, m) {
+				out[m] = true
+			}
+		}
+	}
+	return out, nil
+}
+
+func containsIgnoreCase(haystack, needle string) bool {
+	return len(needle) > 0 && len(haystack) >= len(needle) &&
+		(haystack == needle || len(haystack) > 0 && (containsFold(haystack, needle)))
+}
+
+func containsFold(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if equalFoldASCII(s[i:i+len(substr)], substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func equalFoldASCII(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := 0; i < len(a); i++ {
+		ca, cb := a[i], b[i]
+		if ca >= 'A' && ca <= 'Z' {
+			ca += 'a' - 'A'
+		}
+		if cb >= 'A' && cb <= 'Z' {
+			cb += 'a' - 'A'
+		}
+		if ca != cb {
+			return false
+		}
+	}
+	return true
+}
+
 func TestCaptureAndHydrateUsageUserInput(t *testing.T) {
 	store := &memoryUserInputStore{}
+	seenRaftMsgMu.Lock()
+	seenRaftMsgBy = nil
+	seenRaftMsgMu.Unlock()
 	RegisterUsageUserInputStore(store)
 	defer RegisterUsageUserInputStore(nil)
 
@@ -457,4 +580,53 @@ func TestCaptureAndHydrateUsageUserInput(t *testing.T) {
 	require.NotNil(t, logs[0].UserInput)
 	require.Equal(t, "排查一下 .64 的慢查询", *logs[0].UserInput)
 	require.Nil(t, logs[1].UserInput)
+}
+
+func TestRaftMessageDeduplicationPerAPIKey(t *testing.T) {
+	store := &memoryUserInputStore{}
+	seenRaftMsgMu.Lock()
+	seenRaftMsgBy = nil
+	seenRaftMsgMu.Unlock()
+	RegisterUsageUserInputStore(store)
+	defer RegisterUsageUserInputStore(nil)
+
+	body := []byte(`{
+		"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"raft message read --target \"#token_proxy:dc0ac427\" --unread"}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"[1/2 seq=1 msg=41b202d8-484f-42ed-b913-8674b9710e68 time=2026-11-06 18:53:26Z type=human] @yunfeng (Asia/Shanghai): 第一条提问\n[2/2 seq=2 msg=921a8965-0a32-4365-a514-afc5ba557a69 time=2026-11-06 18:58:37Z type=human] @yunfeng (Asia/Shanghai): 第二条提问"}]}
+		]
+	}`)
+
+	// 1. Key 6 第一次读取：两条消息都应保存
+	ctx1 := context.WithValue(context.Background(), ctxkey.ClientRequestID, "req-key6-1")
+	require.True(t, CaptureAndEnqueueUsageUserInputFromContext(ctx1, 6, 1, ContentModerationProtocolAnthropicMessages, "claude-opus-5-5", body))
+	key6Req1 := UsageUserInputKey{RequestID: "client:req-key6-1", APIKeyID: 6}
+	require.Eventually(t, func() bool {
+		res, _ := store.BatchGetUsageUserInputs(context.Background(), []UsageUserInputKey{key6Req1})
+		return res[key6Req1] == "[msg=41b202d8] @yunfeng: 第一条提问\n[msg=921a8965] @yunfeng: 第二条提问"
+	}, time.Second, 10*time.Millisecond)
+
+	// 2. Key 6 第二次读到同一条 msg=41b202d8 + 一条新消息 msg=cdac32ef：应只存新消息 msg=cdac32ef
+	body2 := []byte(`{
+		"messages":[
+			{"role":"assistant","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"raft message read --target \"#token_proxy:dc0ac427\" --unread"}}]},
+			{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"[1/2 seq=1 msg=41b202d8-484f-42ed-b913-8674b9710e68 time=2026-11-06 18:53:26Z type=human] @yunfeng (Asia/Shanghai): 第一条提问\n[2/2 seq=3 msg=cdac32ef-d6bb-48d9-b613-4321c2600d42 time=2026-11-06 18:59:47Z type=human] @yunfeng (Asia/Shanghai): 第三条新提问"}]}
+		]
+	}`)
+	ctx2 := context.WithValue(context.Background(), ctxkey.ClientRequestID, "req-key6-2")
+	require.True(t, CaptureAndEnqueueUsageUserInputFromContext(ctx2, 6, 1, ContentModerationProtocolAnthropicMessages, "claude-opus-5-5", body2))
+	key6Req2 := UsageUserInputKey{RequestID: "client:req-key6-2", APIKeyID: 6}
+	require.Eventually(t, func() bool {
+		res, _ := store.BatchGetUsageUserInputs(context.Background(), []UsageUserInputKey{key6Req2})
+		return res[key6Req2] == "[msg=cdac32ef] @yunfeng: 第三条新提问"
+	}, time.Second, 10*time.Millisecond)
+
+	// 3. 另一个 API Key（Key 9，例如 `云风-gpt`）读到相同的第一批消息：不同 Key 互不影响，应完整保存
+	ctx3 := context.WithValue(context.Background(), ctxkey.ClientRequestID, "req-key9-1")
+	require.True(t, CaptureAndEnqueueUsageUserInputFromContext(ctx3, 9, 1, ContentModerationProtocolAnthropicMessages, "gpt-6-astra", body))
+	key9Req1 := UsageUserInputKey{RequestID: "client:req-key9-1", APIKeyID: 9}
+	require.Eventually(t, func() bool {
+		res, _ := store.BatchGetUsageUserInputs(context.Background(), []UsageUserInputKey{key9Req1})
+		return res[key9Req1] == "[msg=41b202d8] @yunfeng: 第一条提问\n[msg=921a8965] @yunfeng: 第二条提问"
+	}, time.Second, 10*time.Millisecond)
 }

@@ -93,3 +93,60 @@ func (r *usageLogRepository) CleanupExpiredUsageUserInputs(ctx context.Context, 
 	}
 	return res.RowsAffected()
 }
+
+func (r *usageLogRepository) FilterUnseenUsageUserInputMarkers(ctx context.Context, apiKeyID int64, since time.Time, markers []string) (map[string]bool, error) {
+	existing := make(map[string]bool)
+	if r == nil || r.sql == nil || apiKeyID <= 0 || len(markers) == 0 {
+		return existing, nil
+	}
+
+	var validMarkers []string
+	seen := make(map[string]struct{}, len(markers))
+	for _, m := range markers {
+		m = strings.TrimSpace(m)
+		if m == "" {
+			continue
+		}
+		if _, ok := seen[m]; ok {
+			continue
+		}
+		seen[m] = struct{}{}
+		validMarkers = append(validMarkers, m)
+	}
+	if len(validMarkers) == 0 {
+		return existing, nil
+	}
+
+	clauses := make([]string, 0, len(validMarkers))
+	args := make([]any, 0, 2+len(validMarkers))
+	args = append(args, apiKeyID, since.UTC())
+	for i, m := range validMarkers {
+		pos := i + 3
+		clauses = append(clauses, fmt.Sprintf("POSITION($%d IN user_input) > 0", pos))
+		args = append(args, m)
+	}
+
+	query := "SELECT user_input FROM usage_user_inputs WHERE api_key_id = $1 AND created_at >= $2 AND (" + strings.Join(clauses, " OR ") + ")"
+	rows, err := r.sql.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var text string
+		if err := rows.Scan(&text); err != nil {
+			return nil, err
+		}
+		lower := strings.ToLower(text)
+		for _, m := range validMarkers {
+			if strings.Contains(lower, strings.ToLower(m)) {
+				existing[m] = true
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return existing, nil
+}
