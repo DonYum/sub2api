@@ -382,6 +382,12 @@ func TestExtractSanitizedUserInput_ComprehensiveCases(t *testing.T) {
 			body:     `{"messages":[{"role":"user","content":"<task-notification>\n<task-id>aGyVf2</task-id>\n<status>failed</status>\n</task-notification>"}]}`,
 			want:     "",
 		},
+		{
+			name:     "Raft_ThreadContextWithBracketsDoesNotCorruptDeliveredMessage",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body:     `{"messages":[{"role":"user","content":"New message received:\n\n[Raft thread context: you were mentioned in a thread without model-visible context.]\nparent: #token_proxy\nthread: #token_proxy:dc0ac427\n\nRecent thread context (truncated):\n- [msg=232878c1 seq=20792183 time=2026-11-06 14:16:34Z type=agent] @gemini: 剥离 [Image: original ...]\n\n[target=#token_proxy:dc0ac427 msg=4cf94ab9 time=2026-11-06 15:20:25Z type=human] @yunfeng (Asia/Shanghai): @gemini 你采集的信息全吗？为啥没有“云风”的？\n\nRespond as appropriate. Complete all your work before stopping."}]}`,
+			want:     "[target=#token_proxy:dc0ac427 msg=4cf94ab9 time=2026-11-06 15:20:25Z type=human] @yunfeng (Asia/Shanghai): @gemini 你采集的信息全吗？为啥没有“云风”的？",
+		},
 	}
 
 	for _, tc := range cases {

@@ -77,7 +77,8 @@ var (
 	codexAgentsMdBlockRe = regexp.MustCompile(`(?is)#\s*AGENTS\.md\s+instructions[^\n]*\n+.*?<INSTRUCTIONS>.*?</INSTRUCTIONS>`)
 
 	// raftInboxNoticeBlockRe 剥离 Raft 平台投递的 `[Raft inbox notice: ...]` 提醒块及其紧随的说明文字。
-	raftInboxNoticeBlockRe = regexp.MustCompile(`(?is)\[Raft inbox notice:.*?\](?:\s*These messages have not been read\.[^\n]*)?`)
+	// 注意：必须匹配独占一行的 `]` 或无换行的单行 `]`，避免跨出 notice 块误吞后续 `New message received:`。
+	raftInboxNoticeBlockRe = regexp.MustCompile(`(?m)\[Raft inbox notice:(?:[^\n\]]*\]|[\s\S]*?\n\])(?:\s*\nThese messages have not been read\.[^\n]*)?`)
 )
 
 // UsageUserInputRecord 表示一条已清洗、已脱敏并截断的用户输入记录。
@@ -579,7 +580,9 @@ func cleanSingleUserTextSegment(text string) string {
 // 剥离前后的 `[Raft thread context...]` 与 `Respond as appropriate...` 模板包装，
 // 直接保留同事在 Raft 中发送的 `[target=... msg=...] @user: ...` 消息正文。
 func extractRaftDeliveredDirectMessages(text string) string {
-	if !strings.HasPrefix(text, "New message received:") && !strings.HasPrefix(text, "New messages received:") {
+	if !strings.Contains(text, "New message received:") &&
+		!strings.Contains(text, "New messages received:") &&
+		!strings.HasPrefix(text, "[target=") {
 		return text
 	}
 	lines := strings.Split(text, "\n")
@@ -587,7 +590,8 @@ func extractRaftDeliveredDirectMessages(text string) string {
 	capturing := false
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "[target=") {
+		// 只捕获顶层（非 `- [msg=...]` 引用行、非 `│` 缩进引用行）的 `[target=...]` 实际投递消息
+		if strings.HasPrefix(line, "[target=") || (strings.HasPrefix(trimmed, "[target=") && !strings.HasPrefix(trimmed, "- ") && !strings.Contains(line, "│")) {
 			capturing = true
 			kept = append(kept, line)
 			continue
@@ -597,7 +601,8 @@ func extractRaftDeliveredDirectMessages(text string) string {
 				strings.HasPrefix(trimmed, "Reply in the channel or create/reply") ||
 				strings.HasPrefix(trimmed, "Some unread channels may not be included") ||
 				strings.HasPrefix(trimmed, "Run `raft inbox check`") {
-				break
+				capturing = false
+				continue
 			}
 			kept = append(kept, line)
 		}
