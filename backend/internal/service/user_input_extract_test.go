@@ -468,6 +468,16 @@ func TestExtractSanitizedUserInput_ComprehensiveCases(t *testing.T) {
 			}`,
 			want: "",
 		},
+		{
+			name:     "Skip_RaftNoVisibleOutputNudgeAndCapitalInboxNotice",
+			protocol: ContentModerationProtocolAnthropicMessages,
+			body: `{
+				"messages":[
+					{"role":"user","content":"[Raft Inbox notice:\nApp items pending: 1\nRun ` + "`raft inbox check`" + ` to inspect them.\n]\n[Your previous response had no visible output. Please continue and produce a user-visible response.]"}
+				]
+			}`,
+			want: "",
+		},
 	}
 
 	for _, tc := range cases {

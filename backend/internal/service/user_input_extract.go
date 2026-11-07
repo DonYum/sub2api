@@ -38,8 +38,8 @@ var (
 	// codexQuestionReplyBlockRe 匹配 Codex `<send_user_message_question_reply>...</send_user_message_question_reply>` 块。
 	codexQuestionReplyBlockRe = regexp.MustCompile(`(?is)<send_user_message_question_reply\b[^>]*>(.*?)</send_user_message_question_reply>`)
 
-	// claudeImageCoordNoteRe 剥离 Claude Code 附加在图片块后的坐标缩放说明 `[Image: original ... to map to original image.]` 或 `[Request interrupted by user]`。
-	claudeImageCoordNoteRe = regexp.MustCompile(`(?is)\[Image:\s*original\s+\d+x\d+[^\]]*to map to original image\.\]|\[\s*Request interrupted by user[^\]]*\]|(?:^|\n)\s*##\s*My request:\s*\n`)
+	// claudeImageCoordNoteRe 剥离 Claude Code 附加在图片块后的坐标缩放说明 `[Image: original ... to map to original image.]`、`[Request interrupted by user]` 或 Raft 督促回复提示 `[Your previous response had no visible output...]`。
+	claudeImageCoordNoteRe = regexp.MustCompile(`(?is)\[Image:\s*original\s+\d+x\d+[^\]]*to map to original image\.\]|\[\s*Request interrupted by user[^\]]*\]|\[\s*Your previous response had no visible output\.[^\]]*\]|(?:^|\n)\s*##\s*My request:\s*\n`)
 
 	// strippedAgentNoiseBlockPatterns 剥离各类 Coding Agent 注入在 user 消息中的非用户指令/环境噪音闭合标签块。
 	// 仅剥离闭合标签块本身，保留同一文本块中标签以外的用户真实输入（解决 content_moderation_input.go 整块丢弃的盲区）。
@@ -78,7 +78,7 @@ var (
 
 	// raftInboxNoticeBlockRe 剥离 Raft 平台投递的 `[Raft inbox notice: ...]` 提醒块及其紧随的说明文字。
 	// 注意：必须匹配独占一行的 `]` 或无换行的单行 `]`，避免跨出 notice 块误吞后续 `New message received:`。
-	raftInboxNoticeBlockRe = regexp.MustCompile(`(?m)\[Raft inbox notice:(?:[^\n\]]*\]|[\s\S]*?\n\])(?:\s*\nThese messages have not been read\.[^\n]*)?`)
+	raftInboxNoticeBlockRe = regexp.MustCompile(`(?im)\[Raft inbox notice:(?:[^\n\]]*\]|[\s\S]*?\n\])(?:\s*\nThese messages have not been read\.[^\n]*)?`)
 
 	// raftMsgHeaderLineRe 匹配 Raft 消息行头（兼容 `raft message read` 的 `[1/8 seq=... msg=<id> ... type=<type>]`
 	// 与 `New message received:` 的 `[target=... msg=<id> ... type=<type>]` 格式）。
