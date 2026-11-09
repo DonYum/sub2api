@@ -104,7 +104,6 @@ const DataTableStub = {
     <div>
       <div v-for="row in data" :key="row.request_id" :data-request-id="row.request_id">
         <slot name="cell-model" :row="row" :value="row.model" />
-        <slot name="cell-user_input" :row="row" :value="row.user_input" />
         <slot name="cell-reasoning_effort" :row="row" :value="row.reasoning_effort" />
         <slot name="cell-billing_mode" :row="row" />
         <slot name="cell-tokens" :row="row" />
@@ -913,49 +912,5 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
-  })
-
-  it('renders user_input summary and opens detail modal on click', async () => {
-    const row = {
-      request_id: 'client:req-input-1',
-      model: 'claude-opus-5-5',
-      user_id: 1,
-      user_input: '第一行提问\n第二行详细需求',
-      actual_cost: 0.01,
-      total_cost: 0.01,
-      input_cost: 0.005,
-      output_cost: 0.005,
-      rate_multiplier: 1,
-      input_tokens: 100,
-      output_tokens: 50,
-    }
-
-    const wrapper = mount(UsageTable, {
-      props: {
-        data: [row],
-        loading: false,
-        columns: [{ key: 'user_input', label: 'User Input' }],
-      },
-      global: {
-        stubs: {
-          DataTable: DataTableStub,
-          EmptyState: true,
-          Icon: true,
-          Teleport: true,
-        },
-      },
-    })
-
-    const btn = wrapper.find('[data-testid="user-input-cell"]')
-    expect(btn.exists()).toBe(true)
-    expect(btn.text()).toBe('第一行提问 第二行详细需求')
-    expect(wrapper.find('[data-testid="user-input-modal"]').exists()).toBe(false)
-
-    await btn.trigger('click')
-    await nextTick()
-
-    const modal = wrapper.find('[data-testid="user-input-modal"]')
-    expect(modal.exists()).toBe(true)
-    expect(modal.text()).toContain('第一行提问\n第二行详细需求')
   })
 })

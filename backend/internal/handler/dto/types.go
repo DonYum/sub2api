@@ -709,9 +709,6 @@ type AdminUsageLog struct {
 	// IPAddress 用户请求 IP
 	IPAddress *string `json:"ip_address,omitempty"`
 
-	// UserInput 用户当轮纯净输入（仅管理端返回）
-	UserInput *string `json:"user_input,omitempty"`
-
 	// Account 最小账号信息（避免泄露敏感字段）
 	Account *AccountSummary `json:"account,omitempty"`
 }

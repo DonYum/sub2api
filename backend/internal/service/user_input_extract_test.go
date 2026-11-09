@@ -590,16 +590,6 @@ func TestCaptureAndHydrateUsageUserInput(t *testing.T) {
 		res, _ := store.BatchGetUsageUserInputs(context.Background(), []UsageUserInputKey{expectedKey})
 		return res[expectedKey] == "排查一下 .64 的慢查询"
 	}, time.Second, 10*time.Millisecond)
-
-	logs := []UsageLog{
-		{ID: 1, RequestID: "client:cli-req-99", APIKeyID: 88},
-		{ID: 2, RequestID: "client:missing", APIKeyID: 88},
-	}
-	svc := &UsageService{}
-	svc.hydrateUsageLogUserInputs(context.Background(), logs)
-	require.NotNil(t, logs[0].UserInput)
-	require.Equal(t, "排查一下 .64 的慢查询", *logs[0].UserInput)
-	require.Nil(t, logs[1].UserInput)
 }
 
 func TestRaftMessageDeduplicationPerAPIKey(t *testing.T) {
