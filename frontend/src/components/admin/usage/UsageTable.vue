@@ -104,20 +104,6 @@
           </span>
         </template>
 
-        <template #cell-user_input="{ row }">
-          <button
-            v-if="row.user_input"
-            type="button"
-            data-testid="user-input-cell"
-            class="block max-w-[240px] truncate text-left text-xs text-gray-700 underline decoration-dashed underline-offset-2 transition-colors hover:text-primary-600 dark:text-gray-300 dark:hover:text-primary-400"
-            :title="row.user_input"
-            @click="openUserInputModal(row)"
-          >
-            {{ formatUserInputSummary(row.user_input) }}
-          </button>
-          <span v-else data-testid="user-input-empty" class="text-sm text-gray-400 dark:text-gray-500">-</span>
-        </template>
-
         <template #cell-endpoint="{ row }">
           <div class="max-w-[320px] space-y-1 text-xs">
             <div class="break-all text-gray-700 dark:text-gray-300">
@@ -546,49 +532,6 @@
       </div>
     </div>
   </Teleport>
-
-  <!-- User Input Detail Modal -->
-  <Teleport to="body">
-    <div
-      v-if="selectedUserInputRow"
-      data-testid="user-input-modal"
-      class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
-      @click.self="closeUserInputModal"
-    >
-      <div class="flex max-h-[80vh] w-full max-w-2xl flex-col rounded-xl bg-white shadow-2xl dark:bg-dark-800">
-        <div class="flex items-center justify-between border-b border-gray-200 px-5 py-3.5 dark:border-dark-700">
-          <div class="flex items-center gap-2">
-            <h3 class="text-base font-semibold text-gray-900 dark:text-white">
-              {{ t('admin.usage.userInputDetailTitle') }}
-            </h3>
-            <span v-if="selectedUserInputRow.model" class="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600 dark:bg-dark-700 dark:text-gray-300">
-              {{ selectedUserInputRow.model }}
-            </span>
-          </div>
-          <div class="flex items-center gap-2">
-            <button
-              type="button"
-              class="inline-flex items-center gap-1 rounded px-2.5 py-1 text-xs font-medium text-primary-600 transition-colors hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/30"
-              @click="copyIdentifier(selectedUserInputRow.user_input || '', t('admin.usage.userInputCopied'))"
-            >
-              <Icon name="copy" size="sm" class="h-3.5 w-3.5" />
-              {{ t('keys.copyToClipboard') }}
-            </button>
-            <button
-              type="button"
-              class="rounded p-1 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-300"
-              @click="closeUserInputModal"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-        <div class="overflow-y-auto p-5">
-          <pre class="whitespace-pre-wrap break-words font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200">{{ selectedUserInputRow.user_input }}</pre>
-        </div>
-      </div>
-    </div>
-  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -748,15 +691,6 @@ const copyIdentifier = async (value: string, copiedMessage: string) => {
 const copyRequestId = (requestId: string) => copyIdentifier(requestId, t('admin.usage.requestIdCopied'))
 const copyUpstreamRequestId = (upstreamRequestId: string) =>
   copyIdentifier(upstreamRequestId, t('admin.usage.upstreamRequestIdCopied'))
-
-const selectedUserInputRow = ref<AdminUsageLog | null>(null)
-const formatUserInputSummary = (text: string): string => text.replace(/\s+/g, ' ').trim()
-const openUserInputModal = (row: AdminUsageLog) => {
-  selectedUserInputRow.value = row
-}
-const closeUserInputModal = () => {
-  selectedUserInputRow.value = null
-}
 
 // Tooltip state - cost
 const tooltipVisible = ref(false)
