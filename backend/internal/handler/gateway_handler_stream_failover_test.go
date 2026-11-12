@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -66,6 +67,32 @@ func TestStreamWrittenGuard_MessagesPath_AbortFailoverOnSSEContentWritten(t *tes
 	lastIdx := strings.LastIndex(body, "event: message_start")
 	assert.Equal(t, firstIdx, lastIdx,
 		"响应体中 'event: message_start' 必须只出现一次，不得因 failover 拼接导致两次")
+}
+
+func TestHandleFailoverExhausted_AnthropicEmptyOrRefusalUsesClientMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body, err := json.Marshal(map[string]any{
+		"type": "error",
+		"error": map[string]any{
+			"type":    "upstream_error",
+			"code":    "anthropic_empty_or_refusal",
+			"message": "Anthropic upstream returned stop_reason=refusal",
+		},
+	})
+	require.NoError(t, err)
+
+	(&GatewayHandler{}).handleFailoverExhausted(c, &service.UpstreamFailoverError{
+		StatusCode:   http.StatusBadGateway,
+		ResponseBody: body,
+	}, service.PlatformAnthropic, false)
+
+	require.Equal(t, http.StatusBadGateway, w.Code)
+	require.Contains(t, w.Body.String(), service.AnthropicEmptyOrRefusalClientMessage())
+	require.NotContains(t, w.Body.String(), "stop_reason=refusal")
 }
 
 // TestStreamWrittenGuard_GeminiPath_AbortFailoverOnSSEContentWritten 与上述测试相同，
