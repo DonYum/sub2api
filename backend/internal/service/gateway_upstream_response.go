@@ -1588,6 +1588,13 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 		return nil, fmt.Errorf("parse response: %w", err)
 	}
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		detector := newAnthropicMessagesFailoverDetector()
+		detector.ObservePayload(body)
+		if detector.ShouldFailover() {
+			return nil, s.newAnthropicEmptyOrRefusalFailoverError(c, resp, account, detector)
+		}
+	}
 
 	// 解析嵌套的 cache_creation 对象中的 5m/1h 明细
 	cc5m := gjson.GetBytes(body, "usage.cache_creation.ephemeral_5m_input_tokens")

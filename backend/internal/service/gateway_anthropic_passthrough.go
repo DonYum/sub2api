@@ -1,8 +1,8 @@
 package service
 
 // 本文件由 gateway_service.go 纯移动拆分而来：Anthropic APIKey 直通
-// （passthrough）转发路径及其流式/非流式响应与 usage 解析。仅做代码搬迁，
-// 无任何行为变更。
+// （passthrough）转发路径及其流式/非流式响应与 usage 解析。
+// 空流与 content-filter refusal 的客户端缓冲见 anthropic_empty_or_refusal.go。
 
 import (
 	"bufio"
@@ -414,6 +414,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	var firstTokenMs *int
 	clientDisconnected := false
 	sawTerminalEvent := false
+	// Hold SSE, including message_start, until real assistant output is seen.
+	// Otherwise a short HTTP 200 refusal or empty end_turn is already committed
+	// and the handler cannot switch accounts.
+	var pending bytes.Buffer
+	clientOutputStarted := false
+	refusalDetector := newAnthropicMessagesFailoverDetector()
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -495,11 +501,33 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 		keepaliveTimer.Reset(keepaliveInterval)
 	}
 	inPartialEvent := false
+	writePending := func() {
+		if clientDisconnected || pending.Len() == 0 {
+			return
+		}
+		if _, err := io.WriteString(w, pending.String()); err != nil {
+			clientDisconnected = true
+			logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
+			pending.Reset()
+			return
+		}
+		pending.Reset()
+		flusher.Flush()
+		lastDataAt = time.Now()
+		resetKeepaliveTimer()
+	}
 
 	for {
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if !clientOutputStarted && !clientDisconnected && refusalDetector.ShouldFailover() {
+					return nil, s.newAnthropicEmptyOrRefusalFailoverError(c, resp, account, refusalDetector)
+				}
+				if !clientOutputStarted && !clientDisconnected {
+					writePending()
+					clientOutputStarted = !clientDisconnected
+				}
 				if !clientDisconnected {
 					// 兜底补刷，确保最后一个未以空行结尾的事件也能及时送达客户端。
 					flusher.Flush()
@@ -529,6 +557,12 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] SSE line too long: account=%d max_size=%d error=%v", account.ID, maxLineSize, ev.err)
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, ev.err
 				}
+				// 上游中途读错误：尚未向客户端写出任何字节时包成 UpstreamFailoverError，
+				// 与 handleStreamingResponse 在 !c.Writer.Written() 时的行为一致。
+				if !clientOutputStarted && !clientDisconnected && (c.Writer == nil || !c.Writer.Written()) {
+					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Upstream stream read error before any client output (account=%d), failing over: %v", account.ID, ev.err)
+					return nil, newAnthropicPassthroughStreamReadFailoverError(ev.err)
+				}
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream read error: %w", ev.err)
 			}
 
@@ -550,9 +584,36 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 					sawTerminalEvent = true
 				}
 			}
+			refusalDetector.ObserveSSELine(line)
+			if !clientOutputStarted && !clientDisconnected && refusalDetector.ShouldFailover() {
+				return nil, s.newAnthropicEmptyOrRefusalFailoverError(c, resp, account, refusalDetector)
+			}
+
+			restored := string(reverseToolNamesIfPresent(c, []byte(line)))
+			if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				pending.WriteString(restored)
+				pending.WriteString("\n")
+				if line == "" {
+					inPartialEvent = false
+				} else {
+					inPartialEvent = true
+				}
+				continue
+			}
+			if !clientOutputStarted {
+				pending.WriteString(restored)
+				pending.WriteString("\n")
+				clientOutputStarted = true
+				writePending()
+				if line == "" {
+					inPartialEvent = false
+				} else {
+					inPartialEvent = true
+				}
+				continue
+			}
 
 			if !clientDisconnected {
-				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
@@ -593,6 +654,13 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {
+				resetKeepaliveTimer()
+				continue
+			}
+			if !clientOutputStarted {
+				// A ping would commit the response and make refusal failover impossible.
+				pending.WriteString("event: ping\ndata: {\"type\": \"ping\"}\n\n")
+				lastDataAt = time.Now()
 				resetKeepaliveTimer()
 				continue
 			}
@@ -869,6 +937,11 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		var raw json.RawMessage
 		if err := json.Unmarshal(body, &raw); err != nil {
 			return nil, invalidNonStreamingJSONFailoverError(ctx, s.rateLimitService, resp, account, body, err)
+		}
+		detector := newAnthropicMessagesFailoverDetector()
+		detector.ObservePayload(body)
+		if detector.ShouldFailover() {
+			return nil, s.newAnthropicEmptyOrRefusalFailoverError(c, resp, account, detector)
 		}
 	}
 

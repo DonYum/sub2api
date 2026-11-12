@@ -1549,9 +1549,13 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingReadError(t *testing
 
 	result, err := svc.handleStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 6}, time.Now(), "claude-3-7-sonnet-20250219")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "stream read error")
-	require.NotNil(t, result)
-	require.False(t, result.clientDisconnect)
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingTimeoutAfterClientDisconnect(t *testing.T) {
@@ -1581,7 +1585,11 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingTimeoutAfterClientDi
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = pw.Write([]byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":9}}}` + "\n"))
+		_, _ = pw.Write([]byte(strings.Join([]string{
+			`data: {"type":"message_start","message":{"usage":{"input_tokens":9}}}`,
+			`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`,
+			"",
+		}, "\n")))
 		// 保持上游连接静默，触发数据间隔超时分支。
 		time.Sleep(1500 * time.Millisecond)
 		_ = pw.Close()
@@ -1646,8 +1654,12 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_StreamingUpstreamReadErrorAft
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
 		Body: &streamReadCloser{
-			payload: []byte(`data: {"type":"message_start","message":{"usage":{"input_tokens":8}}}` + "\n\n"),
-			err:     io.ErrUnexpectedEOF,
+			payload: []byte(strings.Join([]string{
+				`data: {"type":"message_start","message":{"usage":{"input_tokens":8}}}`,
+				`data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hi"}}`,
+				"",
+			}, "\n")),
+			err: io.ErrUnexpectedEOF,
 		},
 	}
 
