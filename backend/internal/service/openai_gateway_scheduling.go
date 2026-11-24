@@ -453,6 +453,9 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 	if requireCompact && openAICompactSupportTier(account) == 0 {
 		return "compact_unsupported"
 	}
+	if vetoed, reason := openAIImageSizeVetoReason(ctx, account); vetoed {
+		return reason
+	}
 	return ""
 }
 
@@ -970,6 +973,7 @@ func (s *OpenAIGatewayService) tryStickySessionHit(ctx context.Context, groupID 
 	if _, excluded := excludedIDs[accountID]; excluded {
 		return nil
 	}
+	ctx = withOpenAIImageSizeStickyAccount(ctx, accountID)
 
 	account, err := s.getSchedulableAccount(ctx, accountID)
 	if err != nil {
@@ -1153,6 +1157,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			stickyAccountID = accountID
 		}
 	}
+	ctx = withOpenAIImageSizeStickyAccount(ctx, stickyAccountID)
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
 		account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
 		if err != nil {
@@ -1200,25 +1205,32 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		return excluded
 	}
 
-	preemptCandidates := make([]*Account, 0, len(accounts))
-	for i := range accounts {
-		acc := &accounts[i]
-		if isExcluded(acc.ID) {
-			continue
+	// hasEligibleHigherPriorityCandidate reports whether an eligible account
+	// ranks above the sticky one. Only accounts that could outrank it are
+	// checked: the eligibility check records image-size pass state, and
+	// scanning the rest would make a busy sticky account spill over to a later
+	// size rank instead of being waited on.
+	hasEligibleHigherPriorityCandidate := func(sticky *Account) bool {
+		for i := range accounts {
+			acc := &accounts[i]
+			if acc.Priority >= sticky.Priority || isExcluded(acc.ID) {
+				continue
+			}
+			if reason := openAICompatibleAccountEligibilityFailureReason(ctx, acc, platform, requestedModel, false, requiredCapability); reason != "" {
+				continue
+			}
+			if !parentHealthyForShadow(acc, s.parentAccountLookup(ctx)) {
+				continue
+			}
+			if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
+				continue
+			}
+			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
+				continue
+			}
+			return true
 		}
-		if reason := openAICompatibleAccountEligibilityFailureReason(ctx, acc, platform, requestedModel, false, requiredCapability); reason != "" {
-			continue
-		}
-		if !parentHealthyForShadow(acc, s.parentAccountLookup(ctx)) {
-			continue
-		}
-		if s.isOpenAIAccountRequestRuntimeBlocked(acc, requestedModel) {
-			continue
-		}
-		if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, acc, requestedModel, requireCompact) {
-			continue
-		}
-		preemptCandidates = append(preemptCandidates, acc)
+		return false
 	}
 
 	// ============ Layer 1: Sticky session ============
@@ -1248,7 +1260,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
-					} else if !preemptSticky || !hasHigherPriorityGatewayCandidate(preemptCandidates, account) {
+					} else if !preemptSticky || !hasEligibleHigherPriorityCandidate(account) {
 						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
 						if err == nil && result != nil && result.Acquired {
 							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
